@@ -5,10 +5,6 @@
 # 复核：2026-09-07 海外逐条可拉取清单与媒体分片；大陆直连全部不可达（域名污染）。
 #       纬来日本 / 纬来育乐为 RTMP，仅验证转发站在线，需播放器支持。
 
-#EXTINF:-1 tvg-name="华视" tvg-logo="https://epg.112114.xyz/logo/华视.png" group-title="台湾",华视教体
-http://220.135.241.47:8318/0.ts
-#EXTINF:-1 tvg-name="台视财经" tvg-logo="https://epg.112114.xyz/logo/台视财经.png" group-title="台湾",台视财经
-http://220.135.241.47:8315/0.ts
 #EXTINF:-1 tvg-logo="https://epg.pw/media/images/channel/2023/07/22/large/20230722105459178241_22.png" group-title="台湾",纬来日本
 rtmp://f13h.mine.nu/sat/tv771
 #EXTINF:-1 tvg-logo="https://epg.pw/media/images/channel/2023/07/22/large/20230722124851344289_73.png" group-title="台湾",纬来育乐
@@ -33,10 +29,6 @@ https://cdn.qd.je/163189/hoy
 https://cdn.qd.je/163189/hoy78
 #EXTINF:-1 tvg-logo="https://epg.112114.xyz/logo/HOY%E5%9B%BD%E9%99%85%E8%B4%A2%E7%BB%8F%E5%8F%B0.png" group-title="香港",HOY国际财经台
 https://cdn.qd.je/163189/hoy76
-#EXTINF:-1 tvg-logo="https://epg.112114.xyz/logo/ViuTV.png" group-title="香港",ViuTV
-https://cdn.qd.je/163189/viu
-#EXTINF:-1 tvg-logo="https://epg.112114.xyz/logo/ViuTVsix.png" group-title="香港",ViuTVsix
-https://cdn.qd.je/163189/viu6
 #EXTINF:-1 tvg-logo="https://epg.112114.xyz/logo/NOW%E6%96%B0%E9%97%BB%E5%8F%B0.png" group-title="香港",NOW新闻台
 https://cdn.qd.je/163189/now
 #EXTINF:-1 tvg-logo="https://epg.112114.xyz/logo/RTHK31.png" group-title="香港",RTHK31
