@@ -13,12 +13,12 @@ export default {
   async fetch(_config, ctx = {}) {
     // Test injection keeps offline fixtures independent of the production browser/profile.
     const catalog = ctx.catalog || runtime.catalog
-    const { events, warnings } = await catalog.discover()
+    const { events, warnings, coverage } = await catalog.discover()
     return { groups: [{ name: GROUP_NAME, dataList: events.map(event => ({
       name: eventName(event), deferredRef: `iqiyi-sports-${event.id}`, proxyHls: true, catchup: 'none',
       // Sports rooms are dynamic events, not television channels. Do not use match posters as logos.
       logo: '', opts: ['network-caching=3000'],
-    })) }], meta: { skipped: [], warnings } }
+    })) }], meta: { skipped: [], warnings, coverage } }
   },
   claimsRef,
   resolve: ref => runtime.resolve(ref),

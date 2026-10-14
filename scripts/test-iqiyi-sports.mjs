@@ -31,11 +31,78 @@ test('discover uses current official menus, deduplicates live events, and exclud
   const calls = []
   const catalog = createCatalog({ fetchImpl: async url => { calls.push(url); return new Response(JSON.stringify(url === CONFIG_URL
     ? { retData: { menuConfigList: [{ url: 'https://sports.iqiyi.com/resource/json/pc/channel/menu_123.json' }] } }
-    : catalogBody([row]))) } })
+    : url.includes('/matchinfo_new/') ? { resCode: '200', retData: { matchBaseInfo: row.matchBaseInfo } } : catalogBody([row]))) } })
   const result = await catalog.discover(); await catalog.discover()
   assert.equal(result.events[0].id, event.id)
-  assert.equal(calls.length, 2)
+  assert.equal(calls.length, 3)
   assert.ok(calls[1].includes('menu_123.json'))
+})
+test('topic-only nested live entries are followed, deduplicated and checked against official event details', async () => {
+  const menu = 'https://sports.iqiyi.com/resource/json/pc/channel/menu_123.json'
+  const topic = 'https://sports.iqiyi.com/resource/json/pc/specialProgram_new/new/special_p_880460552_0.json'
+  const page = 'https://sports.iqiyi.com/resource/pc/index_pc.html#/specialProgramNew/880460552'
+  const stale = { ...row, matchBaseInfo: { ...row.matchBaseInfo, matchId: '1200050811', qipuid: '8201042815042123' } }
+  const bodies = {
+    [CONFIG_URL]: { retData: { menuConfigList: [{ url: menu }, { url: page }] } },
+    [menu]: catalogBody([{ commonBaseInfo: { type: 'special_program' }, jumpInfo: { iqiyiPC: page } }]),
+    [topic]: { resCode: '200', retData: { leftModules: [{ list: [{ resContentJA: [row, row, stale] }] }],
+      rightModules: [{ link: page }], foreign: 'https://evil.com/resource/pc/index_pc.html#/specialProgramNew/123' } },
+  }
+  const calls = []
+  const catalog = createCatalog({ fetchImpl: async url => {
+    calls.push(url)
+    const body = bodies[url] || { resCode: '200', retData: { matchBaseInfo: url.includes(stale.matchBaseInfo.qipuid)
+      ? { ...stale.matchBaseInfo, status: '2' } : row.matchBaseInfo } }
+    return new Response(JSON.stringify(body))
+  } })
+  const result = await catalog.discover()
+  assert.deepEqual(result.events.map(e => e.id), [event.id])
+  assert.equal(result.coverage.candidates, 2); assert.equal(result.coverage.complete, true)
+  assert.equal(calls.filter(u => u === topic).length, 1)
+  assert.equal(calls.some(u => u.includes('evil.com')), false)
+})
+test('failed and legacy topics report incomplete coverage; temporary detail failure preserves previous known event', async () => {
+  let clock = 0, failTopic = false, failDetail = false, wrongIdentity = false
+  const menu = 'https://sports.iqiyi.com/resource/json/pc/channel/menu_123.json'
+  const catalog = createCatalog({ now: () => clock, fetchImpl: async url => {
+    if (url === CONFIG_URL) return Response.json({ retData: { menuConfigList: [{ url: menu }] } })
+    if (url.includes('/matchinfo_new/')) {
+      if (failDetail) return new Response('', { status: 503 })
+      return Response.json({ resCode: '200', retData: { matchBaseInfo: { ...row.matchBaseInfo, matchId: wrongIdentity ? '999' : event.id } } })
+    }
+    if (url.includes('/specialProgram_new/special_p_')) return new Response('', { status: 403 })
+    if (url !== menu && failTopic) return new Response('', { status: 403 })
+    return Response.json(catalogBody([row, { links: [
+      'https://sports.iqiyi.com/resource/pc/index_pc.html#/specialProgramNew/123',
+      'https://sports.iqiyi.com/sport/index_pc.html#/specialProgram/456' ] }]))
+  } })
+  assert.equal((await catalog.discover()).events.length, 1)
+  clock += 60001; failTopic = true; failDetail = true
+  const result = await catalog.discover()
+  assert.equal(result.events.length, 1); assert.equal(result.coverage.complete, false)
+  assert.ok(result.warnings.some(w => w.includes('HTTP 403')))
+  assert.ok(result.warnings.some(w => w.includes('/specialProgram_new/special_p_456_0.json')))
+  assert.ok(result.warnings.some(w => w.includes('状态未确认')))
+  catalog.clear(); failDetail = false; wrongIdentity = true
+  assert.equal((await catalog.discover()).events.length, 0)
+})
+test('readable legacy topics are included and total directory failure rejects instead of publishing an empty catalog', async () => {
+  let clock = 0, offline = false
+  const url = 'https://sports.iqiyi.com/sport/index_pc.html#/specialProgram/456'
+  const catalog = createCatalog({ now: () => clock, fetchImpl: async source => {
+    if (source === CONFIG_URL) return Response.json({ retData: { menuConfigList: [{ url }] } })
+    if (offline) return new Response('', { status: 503 })
+    if (source.includes('/matchinfo_new/')) return Response.json({ resCode: '200', retData: { matchBaseInfo: row.matchBaseInfo } })
+    assert.equal(source, 'https://sports.iqiyi.com/resource/json/pc/specialProgram_new/special_p_456_0.json')
+    return Response.json({ resCode: '200', retData: { leftModules: [{ list: [{ resContentJA: [row] }] }] } })
+  } })
+  const result = await catalog.discover()
+  assert.deepEqual(result.events.map(e => e.id), [event.id])
+  assert.equal(result.coverage.legacyTopics, 1); assert.equal(result.coverage.complete, true)
+  clock += 60001; offline = true
+  await assert.rejects(catalog.discover(), /全部读取失败/)
+  offline = false
+  assert.equal((await catalog.discover()).events.length, 1)
 })
 test('registered account module emits proxy HLS refs without signed media URLs or fake posters', async () => {
   assert.equal(getModule('iqiyi-sports'), module)
