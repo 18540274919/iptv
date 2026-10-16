@@ -125,6 +125,36 @@ test('highest compatible stream is H264 1080p50, manifests stay fresh, and ticke
   state.http403 = true; await runtime.resolve('iqiyi-sports-' + event.id); assert.equal(state.captures, 3)
   state.events = []; assert.equal((await runtime.resolve('iqiyi-sports-' + event.id)).url, '')
 })
+test('authorization is rechecked in the background before the four-minute hard expiry', async () => {
+  const { state, runtime } = setup()
+  await runtime.resolve('iqiyi-sports-' + event.id); assert.equal(state.captures, 1)
+  state.clock += 150001
+  const served = await runtime.resolve('iqiyi-sports-' + event.id)
+  assert.ok(served.url); assert.equal(state.captures, 2)
+  await new Promise(r => setImmediate(r))
+  // Renewed ticket now serves; no foreground capture at the old four-minute mark.
+  state.clock += 100000; await runtime.resolve('iqiyi-sports-' + event.id); assert.equal(state.captures, 2)
+  // Background recheck that lands on preview revokes the ticket and raises the alert.
+  state.clock += 60000; state.data = { ...authorized(), bossRet: { code: 'A00000', previewTime: 180, data: { prv: '1' } } }
+  await runtime.resolve('iqiyi-sports-' + event.id); await new Promise(r => setImmediate(r))
+  assert.match(runtime.credentialRejected(), /试看/)
+  assert.equal((await runtime.resolve('iqiyi-sports-' + event.id)).url, '')
+})
+test('playback reads a stale catalog without waiting and refreshes it in the background', async () => {
+  let clock = 0, release, scans = 0, gate = Promise.resolve()
+  const catalog = createCatalog({ now: () => clock, fetchImpl: async url => {
+    if (url === CONFIG_URL) { scans++; await gate; return Response.json({ retData: { menuConfigList: [{ url: 'https://sports.iqiyi.com/resource/json/pc/channel/menu_1.json' }] } }) }
+    if (url.includes('/matchinfo_new/')) return Response.json({ resCode: '200', retData: { matchBaseInfo: row.matchBaseInfo } })
+    return Response.json(catalogBody([row]))
+  } })
+  await catalog.discover(); assert.equal(scans, 1)
+  clock += 120000; gate = new Promise(r => { release = r })
+  const stale = await catalog.discover({ allowStale: true })
+  assert.equal(stale.events[0].id, event.id); assert.equal(scans, 2)
+  release(); await catalog.discover(); assert.equal(scans, 2)
+  clock += 700000; gate = Promise.resolve()
+  await catalog.discover({ allowStale: true }); assert.equal(scans, 3)
+})
 test('preview is refused and reported; network errors do not masquerade as expired credentials; successful revalidation clears warning', async () => {
   const { state, runtime } = setup()
   state.data.bossRet = { code: 'A00000', previewTime: 180, data: { prv: '1' } }
@@ -142,12 +172,14 @@ test('preview is refused and reported; network errors do not masquerade as expir
 test('free complete authorization works without a cookie, and foreign media URLs are refused', () => {
   const data = authorized(); data.boss = 0; delete data.bossRet
   assert.equal(selectAuthorizedStream(data, false).member, false)
+  const paid = authorized(); delete paid.bossRet
+  assert.throws(() => selectAuthorizedStream(paid, false), /完整播放授权/)
   assert.throws(() => validateMediaUrl('https://iqiyi.com.example.com/media.ts'))
   assert.throws(() => validateMediaUrl('http://127.0.0.1/media.ts'))
 })
 test('cookie import is domain restricted, preserves equals in values, and makes header session cookies locally persistent', () => {
   const cookie = parseCookies('Cookie: P00001=fixture=value; foo=bar')[0]
-  assert.equal(cookie.value, 'fixture=value'); assert.ok(cookie.expires > Date.now() / 1000)
+  assert.equal(cookie.value, 'fixture=value'); assert.ok(cookie.expires > Date.now() / 1000 + 29 * 86400)
   assert.equal(parseCookies(JSON.stringify([{ name: 'P00001', value: 'fixture', domain: '.iqiyi.com', httpOnly: true }]))[0].httpOnly, true)
   assert.throws(() => parseCookies('foo=bar'), /P00001/)
   assert.throws(() => parseCookies('P00001=a\nOther=b'), /一行/)

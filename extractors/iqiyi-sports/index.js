@@ -7,7 +7,7 @@ export default {
   capabilities: { cache: 'disk', resolve: true, epg: false, catchup: false },
   outputGroupName: GROUP_NAME, channelHlsMode: 'proxy', resolveBurstGuard: true,
   defaultRefreshMinutes: 5, refreshConfigurable: false,
-  refreshDescription: '每五分钟同步官方在播赛事；播放时一分钟缓存复核赛事状态，地址四分钟复用，到期或 CDN 拒绝时重新校验授权。',
+  refreshDescription: '每五分钟同步官方在播赛事；播放时用缓存目录、过期在后台重扫；授权约两分半在后台复核，四分钟硬过期或 CDN 拒绝时当场重新校验。',
   helper: 'iqiyi-sports-login', configSchema: [],
   credentialCheck: { refresh: false, playback: true, degrade: '免费完整直播可匿名播放；会员赛事保留入口，缺少完整权益时提示登录，不续接匿名试看。' },
   async fetch(_config, ctx = {}) {

@@ -55,69 +55,76 @@ export function createCatalog({ fetchImpl = officialFetch, now = Date.now } = {}
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return response.json()
   }
+  function refresh() {
+    task ||= scan().finally(() => { task = undefined })
+    return task
+  }
+  async function scan() {
+    const config = await json(CONFIG_URL)
+    const initial = discoverSources(config)
+    if (!initial.sources.size) throw new Error('爱奇艺官方菜单配置为空')
+    const seen = new Set(), legacy = initial.legacy, warnings = [], byId = new Map()
+    let pending = [...initial.sources], succeeded = 0, failed = 0
+    while (pending.length) {
+      const batch = pending.splice(0, 4).filter(url => !seen.has(url))
+      for (const url of batch) seen.add(url)
+      if (seen.size > 64) throw new Error('爱奇艺目录入口超出扫描上限，保留上次频道')
+      const responses = await Promise.allSettled(batch.map(async url => {
+        const body = await json(url)
+        const events = normalizeEvents(body), links = discoverSources(body)
+        return { body, events, links }
+      }))
+      for (let i = 0; i < responses.length; i++) {
+        const response = responses[i], url = batch[i]
+        let data
+        if (response.status === 'fulfilled') {
+          succeeded++; data = response.value; sourceCache.set(url, data)
+        } else {
+          failed++; warnings.push(`爱奇艺目录覆盖不完整：${url}（${response.reason.message}）`)
+          data = sourceCache.get(url)
+        }
+        if (!data) continue
+        for (const event of data.events) if (!byId.has(event.id)) byId.set(event.id, event)
+        for (const link of data.links.sources) if (!seen.has(link) && !pending.includes(link)) pending.push(link)
+        for (const link of data.links.legacy) legacy.add(link)
+      }
+    }
+    if (!succeeded) throw new Error('爱奇艺赛事目录全部读取失败，保留上次频道')
+    const candidates = [...byId.values()], events = []
+    let verifiedLive = 0
+    // Topic status may be stale. The official playback page loads this event detail API.
+    for (let offset = 0; offset < candidates.length; offset += 4) {
+      const batch = candidates.slice(offset, offset + 4)
+      const details = await Promise.allSettled(batch.map(async event => {
+        if (!/^[1-9]\d{0,19}$/.test(event.qipuId)) throw new Error('缺少有效 qipuId')
+        const body = await json(`https://sports.iqiyi.com/resource/json/matchinfo_new/qipuid/matchinfo_${event.qipuId}.json`)
+        const match = body?.retData?.matchBaseInfo
+        if (String(body?.resCode) !== '200' || String(match?.matchId) !== event.id || String(match?.qipuid) !== event.qipuId
+            || !['0', '1', '2'].includes(String(match?.status))) throw new Error('官方赛事详情格式或身份不匹配')
+        return String(match.status) === '1'
+      }))
+      for (let i = 0; i < details.length; i++) {
+        const detail = details[i], event = batch[i]
+        if (detail.status === 'fulfilled') { if (detail.value) { events.push(event); verifiedLive++ } }
+        else {
+          warnings.push(`爱奇艺在播状态未确认：${event.title}（${detail.reason.message}）`)
+          const previous = cache?.events.find(e => e.id === event.id)
+          if (previous) events.push(previous)
+        }
+      }
+    }
+    cache = { at: now(), events, warnings, coverage: { sources: seen.size, succeeded, failed, legacyTopics: legacy.size,
+      candidates: candidates.length, verifiedLive, complete: warnings.length === 0 } }
+    return cache
+  }
   return {
-    async discover() {
-      if (cache && now() - cache.at < 60000) return cache
-      if (task) return task
-      task = (async () => {
-        const config = await json(CONFIG_URL)
-        const initial = discoverSources(config)
-        if (!initial.sources.size) throw new Error('爱奇艺官方菜单配置为空')
-        const seen = new Set(), legacy = initial.legacy, warnings = [], byId = new Map()
-        let pending = [...initial.sources], succeeded = 0, failed = 0
-        while (pending.length) {
-          const batch = pending.splice(0, 4).filter(url => !seen.has(url))
-          for (const url of batch) seen.add(url)
-          if (seen.size > 64) throw new Error('爱奇艺目录入口超出扫描上限，保留上次频道')
-          const responses = await Promise.allSettled(batch.map(async url => {
-            const body = await json(url)
-            const events = normalizeEvents(body), links = discoverSources(body)
-            return { body, events, links }
-          }))
-          for (let i = 0; i < responses.length; i++) {
-            const response = responses[i], url = batch[i]
-            let data
-            if (response.status === 'fulfilled') {
-              succeeded++; data = response.value; sourceCache.set(url, data)
-            } else {
-              failed++; warnings.push(`爱奇艺目录覆盖不完整：${url}（${response.reason.message}）`)
-              data = sourceCache.get(url)
-            }
-            if (!data) continue
-            for (const event of data.events) if (!byId.has(event.id)) byId.set(event.id, event)
-            for (const link of data.links.sources) if (!seen.has(link) && !pending.includes(link)) pending.push(link)
-            for (const link of data.links.legacy) legacy.add(link)
-          }
-        }
-        if (!succeeded) throw new Error('爱奇艺赛事目录全部读取失败，保留上次频道')
-        const candidates = [...byId.values()], events = []
-        let verifiedLive = 0
-        // Topic status may be stale. The official playback page loads this event detail API.
-        for (let offset = 0; offset < candidates.length; offset += 4) {
-          const batch = candidates.slice(offset, offset + 4)
-          const details = await Promise.allSettled(batch.map(async event => {
-            if (!/^[1-9]\d{0,19}$/.test(event.qipuId)) throw new Error('缺少有效 qipuId')
-            const body = await json(`https://sports.iqiyi.com/resource/json/matchinfo_new/qipuid/matchinfo_${event.qipuId}.json`)
-            const match = body?.retData?.matchBaseInfo
-            if (String(body?.resCode) !== '200' || String(match?.matchId) !== event.id || String(match?.qipuid) !== event.qipuId
-                || !['0', '1', '2'].includes(String(match?.status))) throw new Error('官方赛事详情格式或身份不匹配')
-            return String(match.status) === '1'
-          }))
-          for (let i = 0; i < details.length; i++) {
-            const detail = details[i], event = batch[i]
-            if (detail.status === 'fulfilled') { if (detail.value) { events.push(event); verifiedLive++ } }
-            else {
-              warnings.push(`爱奇艺在播状态未确认：${event.title}（${detail.reason.message}）`)
-              const previous = cache?.events.find(e => e.id === event.id)
-              if (previous) events.push(previous)
-            }
-          }
-        }
-        cache = { at: now(), events, warnings, coverage: { sources: seen.size, succeeded, failed, legacyTopics: legacy.size,
-          candidates: candidates.length, verifiedLive, complete: warnings.length === 0 } }
-        return cache
-      })()
-      try { return await task } finally { task = undefined }
+    // allowStale: playback answers from a cache up to ten minutes old while a scan
+    // (about 18 requests, several seconds) runs in the background.
+    async discover({ allowStale = false } = {}) {
+      const age = cache ? now() - cache.at : Infinity
+      if (age < 60000) return cache
+      if (allowStale && age < 600000) { refresh().catch(() => {}); return cache }
+      return refresh()
     },
     clear() { cache = undefined; sourceCache.clear() },
   }

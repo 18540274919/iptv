@@ -44,7 +44,8 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
           try {
             const text = (await response.text()).trim().replace(/^[\w.$]+\s*\(/, '').replace(/\);?\s*$/, '')
             const body = JSON.parse(text)
-            if (body.data?.bossRet) resolve(body.data)
+            // Member rooms answer with bossRet; complete free rooms may only carry streams.
+            if (body.data?.bossRet || event.free && Array.isArray(body.data?.streams)) resolve(body.data)
           } catch {}
         })
       })
@@ -85,7 +86,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     }),
     check: () => action(async () => {
       const event = await getEvent()
-      if (!event) return { ...snapshot(), message: '当前没有在播赛事，暂时无法核验赛事权益；已保存的登录态保留' }
+      if (!event) return { ...snapshot(), message: '当前没有在播的会员赛事，暂时无法核验赛事权益；已保存的登录态保留' }
       try { state = await verify((await ensure()).defaultBrowserContext(), event); revision++ }
       catch (error) {
         if (error.credential || /没有确认/.test(error.message)) state = { status: 'error', authenticated: false, message: error.message }
@@ -97,7 +98,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
       const cookies = parseCookies(payload)
       return action(async () => {
         const event = await getEvent()
-        if (!event) throw new Error('当前没有在播赛事，无法验证导入凭证；请稍后导入或使用官方网页登录')
+        if (!event) throw new Error('当前没有在播的会员赛事，无法验证导入凭证；请稍后导入或使用官方网页登录')
         const b = await ensure(), staging = await b.createBrowserContext()
         try {
           await staging.setCookie(...cookies)

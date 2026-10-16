@@ -3,15 +3,30 @@ import { createBrowserAuth } from './auth.js'
 
 export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = officialFetch, now = Date.now } = {}) {
   auth ||= createBrowserAuth({ getEvent: async () => {
+    // Free rooms prove nothing about the account; only member rooms can verify login.
     const { events } = await catalog.discover()
-    return events.find(e => !e.free) || events[0]
+    return events.find(e => !e.free)
   } })
   const tickets = new Map(), pending = new Map()
   let rejected = '', revision = auth.revision(), capturing = false
   const clear = () => tickets.clear()
-  async function ticket(event) {
+  // Re-check authorization off the manifest path: a browser capture takes seconds and
+  // would stall players if it ran inside a manifest poll. Hard expiry stays at four minutes.
+  function renewSoon(event, cached) {
+    cached.renewAt = now() + 30000
+    ticket(event, true).catch(error => {
+      if (!error.credential) return
+      rejected = error.message
+      if (tickets.get(event.id) === cached) tickets.delete(event.id)
+    })
+  }
+  async function ticket(event, force = false) {
     if (auth.revision() !== revision) { clear(); revision = auth.revision(); rejected = '' }
-    if (tickets.get(event.id)?.expiresAt > now()) return tickets.get(event.id)
+    const cached = tickets.get(event.id)
+    if (!force && cached?.expiresAt > now()) {
+      if (cached.renewAt <= now() && !pending.has(event.id) && !capturing) renewSoon(event, cached)
+      return cached
+    }
     if (pending.has(event.id)) return pending.get(event.id)
     if (capturing) throw new Error('正在解析另一场爱奇艺赛事，请稍后播放')
     capturing = true
@@ -19,7 +34,7 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
       const captured = await auth.capture(event)
       const result = selectAuthorizedStream(captured.data, captured.hasLogin)
       if (captured.data.id && event.qipuId && String(captured.data.id) !== event.qipuId) throw new Error('官方播放房间与目录不一致，请刷新赛事目录')
-      const value = { ...result, expiresAt: now() + 240000, referer: event.officialPage }
+      const value = { ...result, expiresAt: now() + 240000, renewAt: now() + 150000, referer: event.officialPage }
       tickets.set(event.id, value); rejected = ''
       return value
     })()
@@ -45,7 +60,11 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
     async resolve(ref) {
       if (!claimsRef(ref)) return { url: '', desc: '未知的爱奇艺体育赛事引用' }
       try {
-        const event = (await catalog.discover()).events.find(e => e.id === ref.slice('iqiyi-sports-'.length))
+        const id = ref.slice('iqiyi-sports-'.length)
+        // Manifest polls take the cached catalog and refresh it in the background; only
+        // an event missing from the cached copy waits for a fresh scan.
+        let event = (await catalog.discover({ allowStale: true })).events.find(e => e.id === id)
+        if (!event) event = (await catalog.discover()).events.find(e => e.id === id)
         if (!event) return { url: '', desc: '此赛事已结束或不在官方在播目录中' }
         let result = await ticket(event), hls
         try { hls = await manifest(result) }
