@@ -130,7 +130,15 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     let stream
     try { stream = selectAuthorizedMedia(result, event) }
     catch (error) {
-      if (!error.credential) throw error
+      if (!error.credential) {
+        // The account API already answered (or answers now): a sample title that only offers
+        // DRM / encrypted / non-H.264 media says nothing about the login, so it must not make
+        // a check fail or an import of valid cookies be refused.
+        if (!/DRM|加密|H\.264|官方播放器/.test(error.message)) throw error
+        if (!event.kind) await verifyAccount(context)
+        return { status: 'authenticated', authenticated: true, entitled: null,
+          message: `账号登录有效；用来核验的「${event.title}」只提供加密或不支持的格式，需要官方播放器，不影响其他内容按各自权益显示。` }
+      }
       // A paid live room answers a valid account without this match's rights the same
       // way it answers a logged-out visitor; ask the account API before blaming the login.
       if (!event.kind) await verifyAccount(context)

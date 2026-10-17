@@ -748,3 +748,28 @@ test('the idle browser closes after the last page, and a capture during the clos
   assert.equal(closed, 2); assert.equal(auth.flow.status().running, false)
   await auth.shutdown()
 })
+
+test('a sample title that only offers DRM media does not fail the login check or refuse a valid Cookie import', async () => {
+  let listener, valid = true
+  const drm = { ...authorized(), program: { liveDrmInfo: { drm: true } } }
+  const page = { on: (_event, fn) => { listener = fn }, close: async () => {}, cookies: async () => [{ name: 'P00001', value: 'fixture' }],
+    evaluate: async () => ({ ok: true, code: valid ? 'A00000' : 'P00100', hasUser: valid }),
+    goto: async url => {
+      if (url.includes('/resource/pc/index_pc.html')) return
+      await listener({ url: () => 'https://live.video.iqiyi.com/live', text: async () => JSON.stringify({ data: drm }) })
+    } }
+  const browser = { connected: true, on: () => {}, newPage: async () => page, defaultBrowserContext: () => ({ newPage: async () => page }),
+    createBrowserContext: async () => ({ newPage: async () => page, setCookie: async () => {}, close: async () => {} }),
+    createCDPSession: async () => ({ send: async () => ({ cookies: [] }), detach: async () => {} }) }
+  page.createCDPSession = browser.createCDPSession
+  const auth = createBrowserAuth({ getEvent: async () => event, profile: '/tmp/iptv-iqiyi-auth-fixture', launchImpl: async () => browser, closeImpl: async () => {} })
+  const checked = await auth.flow.check()
+  assert.equal(checked.authenticated, true); assert.equal(checked.entitled, null)
+  assert.match(checked.message, /账号登录有效/)
+  const imported = await auth.flow.import('P00001=fixture; QC005=fixture')
+  assert.equal(imported.authenticated, true, '格式不支持的样本不能挡住有效 Cookie 的导入')
+  valid = false
+  const expired = await auth.flow.check()
+  assert.equal(expired.authenticated, false, '账号接口确认失效时照常报登录失效')
+  await auth.shutdown()
+})
