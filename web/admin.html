@@ -5838,7 +5838,7 @@
                 const data = r.data || {}, badge = document.getElementById('iqiyiLoginState');
                 if (badge) {
                     const rejected = !data.authenticated && (data.status === 'error' ? data.message : badge.dataset.rejected);
-                    badge.textContent = data.authenticated ? '✅ 当前赛事权限已确认' : rejected ? '⚠️ ' + rejected : '未登录或尚未验证赛事权限';
+                    badge.textContent = data.authenticated ? (data.entitled === false ? '✅ 账号已登录 · 当前内容需额外权益' : '✅ 当前赛事权限已确认') : rejected ? '⚠️ ' + rejected : '未登录或尚未验证赛事权限';
                     badge.className = 'login-state-badge ' + (data.authenticated ? 'on' : 'off');
                 }
                 if (detail) { detail.textContent = data.message || data.reason || '请检查本人账号及赛事权益'; detail.style.color = data.status === 'error' ? '#ff4d4f' : '#888'; }

@@ -55,7 +55,7 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
     credentialRejected: () => rejected || (auth.flow.status().status === 'error' ? auth.flow.status().message : ''),
     browserLoginFlow: Object.fromEntries(['status', 'start', 'check', 'import', 'cancel', 'close'].map(method => [method, async (...args) => {
       const result = await auth.flow[method](...args)
-      if (result.authenticated) rejected = ''
+      if (result.authenticated && result.entitled !== false) rejected = ''
       return result
     }])),
     async resolve(ref) {

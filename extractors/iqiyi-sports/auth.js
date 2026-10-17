@@ -10,7 +10,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
   const available = process.platform !== 'linux' || !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
   const snapshot = () => ({ ...state, active: busy, running: !!browser?.connected, visible,
     available, reason: available ? '' : '当前服务没有桌面环境，请从本人浏览器复制 Cookie 导入',
-    account: state.authenticated ? { nickname: '本人爱奇艺账号', type: '当前赛事授权', vip: true } : null })
+    account: state.authenticated ? { nickname: '本人爱奇艺账号', type: state.entitled === false ? '账号有效，当前内容需额外权益' : '当前赛事授权', vip: state.entitled === true ? true : null } : null })
   async function close() {
     if (browser) await closeImpl(browser, { label: '爱奇艺体育' })
     browser = undefined; loginPage = undefined; visible = false
@@ -67,22 +67,34 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     try { return await captureContext((await ensure()).defaultBrowserContext(), event) } finally { pages-- }
   }
   async function verify(context, event) {
-    const result = await captureContext(context, event)
-    const stream = selectAuthorizedMedia(result, event)
-    if (!result.hasLogin || !stream.member) throw new Error('没有确认本人登录后的赛事完整权限')
     if (event.kind) {
       // A replay card may be marked paid while its video is publicly playable.
       // Complete VOD + cookie presence alone cannot validate imported credentials.
       const page = await context.newPage()
       try {
-        const response = await page.goto('https://passport.iqiyi.com/apis/user/info.action', { waitUntil: 'domcontentloaded', timeout: 20000 })
-        if (!response?.ok()) throw new Error('官方账号状态核验未完成，请稍后重试')
-        const body = await response.json()
-        if (body.code === 'P00100') throw Object.assign(new Error('官方未确认账号登录有效，请重新登录'), { credential: true })
-        if (body.code !== 'A00000' || !(body.data?.userinfo || body.data?.userInfo || body.data?.uid || body.data?.user_id)) throw new Error('官方账号状态核验未完成，请稍后重试')
+        // The same logged-in profile gets P00100 on top-level navigation to
+        // this API, but A00000 from the official site's credentialed fetch.
+        await page.goto('https://sports.iqiyi.com/resource/pc/index_pc.html', { waitUntil: 'domcontentloaded', timeout: 20000 })
+        const account = await page.evaluate(async () => {
+          const response = await fetch('https://passport.iqiyi.com/apis/user/info.action', { credentials: 'include' })
+          const body = await response.json()
+          return { ok: response.ok, code: body.code, hasUser: !!(body.data?.userinfo || body.data?.userInfo || body.data?.uid || body.data?.user_id) }
+        })
+        if (account.ok && account.code === 'P00100') throw Object.assign(new Error('官方未确认账号登录有效，请重新登录'), { credential: true })
+        if (!account.ok || account.code !== 'A00000' || !account.hasUser) throw new Error('官方账号状态核验未完成，请稍后重试')
       } finally { await page.close() }
     }
-    return { status: 'authenticated', authenticated: true, message: `已确认完整观看权限：${event.title}` }
+    const result = await captureContext(context, event)
+    let stream
+    try { stream = selectAuthorizedMedia(result, event) }
+    catch (error) {
+      if (!event.kind || !error.credential) throw error
+      // An extra-charge tennis replay does not make a valid sports login expire.
+      return { status: 'authenticated', authenticated: true, entitled: false,
+        message: `账号登录有效；${event.title} 尚无完整观看权益。体育会员、单场直播、专项回放按官网分别校验；未兑换任何观赛券。` }
+    }
+    if (!result.hasLogin || !stream.member) throw new Error('没有确认本人登录后的赛事完整权限')
+    return { status: 'authenticated', authenticated: true, entitled: true, message: `已确认完整观看权限：${event.title}` }
   }
   async function action(fn) {
     if (busy || pages) throw new Error('爱奇艺正在进行登录或播放解析，请稍候')

@@ -236,7 +236,7 @@ test('VOD rejects mismatched IDs, partial previews, DRM and foreign segments wit
   assert.equal(selectVodStream(vodCapture(vod), vod).duration, 4)
   assert.throws(() => selectVodStream(vodCapture({ ...vod, qipuId: '123' }), vod), /不一致/)
   assert.throws(() => selectVodStream(vodCapture(vod, { isPreview: 1 }), vod), e => e.credential === true)
-  assert.throws(() => selectVodStream(vodCapture(vod, { duration: 180 }), vod), /未提供完整/)
+  assert.throws(() => selectVodStream(vodCapture(vod, { duration: 180 }), vod), /未获得完整观看权益/)
   assert.throws(() => selectVodStream(vodCapture(vod, { drmType: 2 }), vod), /DRM/)
   assert.throws(() => selectVodStream(vodCapture(vod, { m3u8: '#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="license"\n#EXT-X-ENDLIST' }), vod), /加密/)
   assert.throws(() => selectVodStream(vodCapture(vod, { m3u8: hls(1).replace('spqcloudcdncnc.inter.71edge.com', 'evil.com') + '#EXT-X-ENDLIST' }), vod), /CDN/)
@@ -274,16 +274,32 @@ test('browser capture keeps live/free response shape and captures only the reque
 
 test('VOD login validation checks official account status instead of accepting an arbitrary cookie on public replays', async () => {
   const vod = normalizeVods(catalogBody([endedCard]))[0]
-  let listener, valid = false
+  let listener, valid = false, preview = false
   const page = { on: (_event, fn) => { listener = fn }, close: async () => {}, cookies: async () => [{ name: 'P00001', value: 'fixture' }],
+    evaluate: async () => ({ ok: true, code: valid ? 'A00000' : 'P00100', hasUser: valid }),
     goto: async url => {
-      if (url.includes('passport.iqiyi.com')) return { ok: () => true, json: async () => valid ? { code: 'A00000', data: { uid: 'fixture-user' } } : { code: 'P00100' } }
-      await listener({ url: () => `https://cache.video.iqiyi.com/dash?tvid=${vod.qipuId}`, text: async () => JSON.stringify(vodCapture(vod)) })
+      if (url.includes('/resource/pc/index_pc.html')) return
+      await listener({ url: () => `https://cache.video.iqiyi.com/dash?tvid=${vod.qipuId}`, text: async () => JSON.stringify(vodCapture(vod, preview ? { duration: 5650 } : {})) })
     } }
   const browser = { connected: true, on: () => {}, defaultBrowserContext: () => ({ newPage: async () => page }) }
   const auth = createBrowserAuth({ getEvent: async () => vod, profile: '/tmp/iptv-iqiyi-auth-fixture', launchImpl: async () => browser, closeImpl: async () => {} })
   assert.equal((await auth.flow.check()).authenticated, false)
   valid = true
   assert.equal((await auth.flow.check()).authenticated, true)
+  preview = true
+  const restricted = await auth.flow.check()
+  assert.equal(restricted.authenticated, true); assert.equal(restricted.entitled, false)
+  assert.match(restricted.message, /账号登录有效/)
   await auth.shutdown()
+})
+
+test('browser status API preserves content entitlement separately from login and strips unapproved fields', async () => {
+  const { getBrowserLoginStatusAPI } = await import('../utils/extractorsAPI.js')
+  const original = module.browserLoginFlow.status
+  module.browserLoginFlow.status = async () => ({ authenticated: true, entitled: false, status: 'authenticated', message: '账号有效，当前回放需额外权益', secret: 'fixture' })
+  try {
+    const result = await getBrowserLoginStatusAPI('iqiyi-sports')
+    assert.equal(result.success, true); assert.equal(result.data.authenticated, true)
+    assert.equal(result.data.entitled, false); assert.equal(result.data.secret, undefined)
+  } finally { module.browserLoginFlow.status = original }
 })

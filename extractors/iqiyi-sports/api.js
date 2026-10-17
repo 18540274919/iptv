@@ -195,6 +195,7 @@ export function selectVodStream(captured, event) {
   if (String(data.tvid) !== event.qipuId) throw new Error('官方点播视频与目录不一致')
   const videos = data.program.video.filter(v => v.m3u8 && v.ff === 'ts' && Number(v.code) === 2)
     .sort((a, b) => Number(b.bid) - Number(a.bid))
+  let incomplete
   for (const video of videos) {
     if (Number(video.isPreview) === 1 || Number(video.ptt) > 0) continue
     if (video.drmType != null && ![0, 1].includes(Number(video.drmType))) continue
@@ -202,13 +203,17 @@ export function selectVodStream(captured, event) {
     if (!/^#EXT-X-ENDLIST\s*$/m.test(text)) continue
     const duration = [...text.matchAll(/^#EXTINF:([\d.]+)/gm)].reduce((sum, m) => sum + Number(m[1]), 0)
     const expected = Number(video.duration)
-    if (!(expected > 0 && duration >= expected - 5 && duration <= expected + 10)) continue
+    if (!(expected > 0 && duration > 0 && duration >= expected - 5 && duration <= expected + 10)) {
+      if (duration > 0 && expected > duration + 10) incomplete = { duration, expected }
+      continue
+    }
     const urls = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
     if (!urls.length) continue
     for (const url of urls) validateMediaUrl(url)
     return { url: event.officialPage, manifestText: text.includes('#EXT-X-PLAYLIST-TYPE:') ? text : text.replace('#EXTM3U', '#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD'), size: video.scrsz || '', bid: video.bid, duration,
       member: captured.hasLogin && !event.free }
   }
+  if (incomplete) throw Object.assign(new Error(`此回放仅返回 ${Math.round(incomplete.duration)} 秒片段（全长 ${Math.round(incomplete.expected)} 秒），未获得完整观看权益；请在官网确认单场或专项权益`), { credential: true })
   throw Object.assign(new Error('官方未提供完整、未加密的 H.264 点播 HLS；试看或 DRM 内容请使用官方播放器'), { credential: videos.some(v => Number(v.isPreview) === 1 || Number(v.ptt) > 0) })
 }
 export const selectAuthorizedMedia = (captured, event) => event.kind ? selectVodStream(captured, event) : selectAuthorizedStream(captured.data, captured.hasLogin)
