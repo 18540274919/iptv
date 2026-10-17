@@ -7,7 +7,10 @@ const VOD_LIMIT = 30
 
 export default {
   id: 'iqiyi-sports', name: '爱奇艺体育', category: 'live',
-  description: '官方体育直播、赛事回放及集锦动态目录；免费赛事或本人账号有权观看的赛事，播放时由官方网页取票。支持网页登录与 Cookie 导入，优先 H.264 1080P 50帧档（以赛事实际提供为准）。开启后后台浏览器会逐条打开官方页面核验观看权限，较弱的设备用不到可以关闭。',
+  // Off by default (#182): it keeps a background browser checking every catalog item even when
+  // nobody watches. Upgrades switch it off once; see #migrateIqiyiSportsOff in extractorManager.
+  defaultEnabled: false,
+  description: '官方体育直播、赛事回放及集锦动态目录；免费赛事或本人账号有权观看的赛事，播放时由官方网页取票。支持网页登录与 Cookie 导入，优先 H.264 1080P 50帧档（以赛事实际提供为准）。开启后后台浏览器会逐条打开官方页面核验观看权限，默认关闭，需要时在这里打开。',
   capabilities: { cache: 'disk', resolve: true, epg: false, catchup: false },
   catalogVersion: 2,
   outputGroupName: GROUP_NAME, channelHlsMode: 'proxy', resolveBurstGuard: true,

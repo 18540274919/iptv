@@ -393,7 +393,27 @@ class ExtractorManager {
     // 那时也必须搬一次，否则导入完就是当场降档。
     this.#migrateLegacyConfig()
     this.#migrateMasterSwitch()
+    this.#migrateIqiyiSportsOff()
     return this
+  }
+
+  /**
+   * 一次性迁移（issue #182）：v4.37.0 首发的爱奇艺体育默认开启，没人看也在后台常驻浏览器逐条核验，
+   * NAS 被占满。之后改成默认关闭，并在升级时把它关一次——包括 v4.37.0 里手动打开过的（作者决定）。
+   * 只关这一次：之后用户再打开就保持打开；登录态在 iqiyi-sports/chrome-profile，不受影响。
+   * 幂等，靠 config.iqiyiSportsSwitchedOff 标记；配置导入走 reload() 时同样适用。
+   */
+  #migrateIqiyiSportsOff() {
+    if (this.corrupt || this.config.iqiyiSportsSwitchedOff) return
+    if (getModule('iqiyi-sports')) {
+      const entry = this.#entry('iqiyi-sports')
+      if (entry.enabled !== false) {
+        entry.enabled = false
+        printYellow('爱奇艺体育已改为默认关闭（issue #182）：需要的话到「源管理 → 网络直播平台」重新打开，登录态保留')
+      }
+    }
+    this.config.iqiyiSportsSwitchedOff = true
+    this.#saveConfig()
   }
 
   /**

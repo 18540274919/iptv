@@ -980,9 +980,10 @@ try {
     for (const id of ['bilibili-live', 'huya-live', 'douyu-live']) {
       assert.equal(modules.find(module => module.id === id)?.category, 'live', `${id} 应归入网络直播平台`)
     }
-    // 「海外」小节就是默认关、由用户自己打开的那几个，两边不能各说各的
+    // 「海外」小节就是默认关、由用户自己打开的那几个，两边不能各说各的；另外只有爱奇艺体育
+    // 因常驻浏览器核验（issue #182）默认关，它仍在「网络直播平台」小节
     assert.deepEqual(
-      modules.filter(module => module.category === 'overseas').map(module => module.id).sort(),
+      modules.filter(module => module.category === 'overseas').map(module => module.id).concat('iqiyi-sports').sort(),
       listModules().filter(module => module.defaultEnabled === false).map(module => module.id).sort(),
     )
     assert.deepEqual(modules.filter(module => module.category === 'overseas').map(module => module.id).sort(), ['overseas', 'tdm'])
@@ -1016,7 +1017,7 @@ try {
 
   check('★ 海外频道、澳门默认关闭，用户打开后保持打开；没点过的开关不落盘', () => {
     const optIn = listModules().filter(module => module.defaultEnabled === false).map(module => module.id)
-    assert.deepEqual(optIn.sort(), ['overseas', 'tdm'], '默认关的只有面向海外的这两个；新增要想清楚')
+    assert.deepEqual(optIn.sort(), ['iqiyi-sports', 'overseas', 'tdm'], '默认关的只有面向海外的两个和常驻浏览器的爱奇艺体育（#182）；新增要想清楚')
     const manager = newManager(undefined, { modules: {}, masterSwitchRetired: true })
     for (const id of optIn) assert.equal(manager.isModuleEnabled(getModule(id)), false, id)
     manager.setModuleEnabled('overseas', true)
@@ -1028,6 +1029,19 @@ try {
     assert.equal(saved.tdm?.enabled, undefined, '没点过的不落值，以后改这个模块的默认值时存量用户跟得上')
     assert.equal(saved.kankanews?.enabled, undefined)
     assert.throws(() => validateModule({ id: 'probe', name: 'probe', defaultEnabled: 'no', fetch: async () => ({ groups: [] }) }), /defaultEnabled/)
+  })
+
+  check('★ 升级时把爱奇艺体育关一次（#182），包括 v4.37.0 里手动打开过的；之后再打开保持打开', () => {
+    for (const legacy of [{}, { 'iqiyi-sports': { enabled: true, config: {} } }]) {
+      const manager = newManager(undefined, { modules: legacy, masterSwitchRetired: true })
+      assert.equal(manager.isModuleEnabled(getModule('iqiyi-sports')), false, JSON.stringify(legacy))
+      assert.equal(JSON.parse(readFileSync(manager.configPath, 'utf-8')).iqiyiSportsSwitchedOff, true)
+      manager.setModuleEnabled('iqiyi-sports', true)
+      manager.load()
+      assert.equal(manager.isModuleEnabled(getModule('iqiyi-sports')), true, '只关一次，用户重新打开后不再被关')
+    }
+    const kept = newManager(undefined, { modules: { 'iqiyi-sports': { enabled: true, config: {} } }, masterSwitchRetired: true, iqiyiSportsSwitchedOff: true })
+    assert.equal(kept.isModuleEnabled(getModule('iqiyi-sports')), true, '已迁移过的不再动')
   })
 
   check('代理开关的模块不受抓取子系统总开关约束', () => {
