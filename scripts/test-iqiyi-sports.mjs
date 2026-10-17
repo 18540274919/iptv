@@ -387,3 +387,47 @@ test('playback and background renewal refusals immediately remove a formerly all
   assert.equal((await runtime.filterPlayable([event])).items.length, 0)
   await runtime.shutdown()
 })
+
+test('visible login is exclusive and subsequent checks and captures reopen the profile headlessly', async () => {
+  const launches = [], browsers = []
+  let closed = 0
+  const makePage = () => {
+    let listener
+    return { on: (_name, fn) => { listener = fn }, isClosed: () => false,
+      setViewport: async () => {}, bringToFront: async () => {}, close: async () => {},
+      cookies: async () => [{ name: 'P00001', value: 'fixture' }],
+      goto: async () => { if (listener) await listener({ url: () => 'https://live.video.iqiyi.com/live', text: async () => JSON.stringify({ data: authorized() }) }) },
+    }
+  }
+  let candidate = event
+  const auth = createBrowserAuth({ getEvent: async () => candidate, profile: '/tmp/iptv-iqiyi-auth-fixture',
+    launchImpl: async options => {
+      launches.push(options.headless)
+      const context = { newPage: async () => makePage() }
+      const browser = { connected: true, on: () => {}, newPage: async () => makePage(), defaultBrowserContext: () => context }
+      browsers.push(browser)
+      return browser
+    }, closeImpl: async browser => { browser.connected = false; closed++ },
+  })
+  await auth.flow.start()
+  assert.equal(auth.flow.status().visible, true)
+  await assert.rejects(auth.capture(event), /完成或关闭登录窗口/)
+  const checked = await auth.flow.check()
+  assert.equal(checked.visible, false)
+  assert.deepEqual(launches, [false, true], 'check must switch from visible to headless')
+  await Promise.all([auth.capture(event), auth.capture(event)])
+  assert.equal(launches.length, 2, 'batch probes reuse only the headless session')
+  await auth.flow.start()
+  await auth.flow.cancel()
+  assert.equal(auth.flow.status().visible, false)
+  assert.equal(auth.flow.status().running, false)
+  await auth.capture(event)
+  assert.equal(launches.at(-1), true)
+  await auth.flow.start()
+  candidate = null
+  const noEvent = await auth.flow.check()
+  assert.equal(noEvent.visible, false)
+  assert.notEqual(noEvent.status, 'waiting', 'empty catalogs must not leave a visible login session or pause scans forever')
+  assert.ok(closed >= 3)
+  await auth.shutdown()
+})

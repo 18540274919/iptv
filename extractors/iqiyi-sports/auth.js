@@ -16,7 +16,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     browser = undefined; loginPage = undefined; visible = false
   }
   async function ensure(headful = false) {
-    if (browser?.connected && (!headful || visible)) return browser
+    if (browser?.connected && visible === headful) return browser
     if (launching) return launching
     launching = (async () => {
       if (browser?.connected) await close()
@@ -62,7 +62,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     } finally { clearTimeout(timer); await page?.close().catch(() => {}); pages-- }
   }
   async function capture(event) {
-    if (busy) throw new Error('爱奇艺正在处理登录操作，请稍后播放')
+    if (busy || state.status === 'waiting') throw new Error('爱奇艺正在处理登录操作，请完成或关闭登录窗口后再播放')
     pages++
     try { return await captureContext((await ensure()).defaultBrowserContext(), event) } finally { pages-- }
   }
@@ -109,6 +109,12 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
       return await fn()
     } finally { busy = false }
   }
+  async function finishLoginWindow() {
+    // Headful is only for the owner's login interaction. Reopen the same persisted
+    // profile headlessly before any checks or background eligibility captures.
+    if (visible) await close()
+    if (state.status === 'waiting') state = { ...state, status: 'idle' }
+  }
   const flow = {
     status: snapshot,
     start: () => action(async () => {
@@ -122,6 +128,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
       return snapshot()
     }),
     check: () => action(async () => {
+      await finishLoginWindow()
       const event = await getEvent()
       if (!event) return { ...snapshot(), message: '当前目录没有可核验的会员直播或回放，暂时无法核验赛事权益；已保存的登录态保留' }
       try { state = await verify((await ensure()).defaultBrowserContext(), event); revision++ }
@@ -134,6 +141,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     import: payload => {
       const cookies = parseCookies(payload)
       return action(async () => {
+        await finishLoginWindow()
         const event = await getEvent()
         if (!event) throw new Error('当前目录没有可核验的会员直播或回放，无法验证导入凭证；请稍后导入或使用官方网页登录')
         const b = await ensure(), staging = await b.createBrowserContext()
@@ -163,8 +171,8 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
         } finally { await staging.close() }
       })
     },
-    cancel: () => action(async () => { await loginPage?.close().catch(() => {}); loginPage = undefined; state = { ...state, status: 'idle' }; return snapshot() }),
-    close: () => action(async () => { await close(); state = { ...state, message: '后台浏览器已关闭，已保存的登录态会在下次播放时恢复' }; return snapshot() }),
+    cancel: () => action(async () => { await finishLoginWindow(); state = { ...state, status: 'idle', message: '登录窗口已关闭，后续核验在后台运行；已保存的登录态保留' }; return snapshot() }),
+    close: () => action(async () => { await close(); state = { ...state, status: state.status === 'waiting' ? 'idle' : state.status, message: '后台浏览器已关闭，已保存的登录态会在下次播放时恢复' }; return snapshot() }),
   }
   return { flow, capture, revision: () => revision, shutdown: close }
 }
