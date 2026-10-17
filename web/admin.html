@@ -7141,7 +7141,7 @@
             for (const g of (myPlaylistData || [])) {
                 if (isSystemAnnouncementGroup(g)) continue;
                 for (const ch of (g.channels || [])) {
-                    if (!ch.logo) out.push({ group: g.name, id: ch.id, name: ch.name });
+                    if (!ch.logo && !dynamicSportsSource(ch, g.name)) out.push({ group: g.name, id: ch.id, name: ch.name });
                 }
             }
             return out;
@@ -7179,6 +7179,7 @@
         // 在「频道详情」里直接给本频道设别名（issue #62）：把本频道名追加到指定规范名下（不覆盖已有别名），
         // 保存后重新加载「我的频道」即时重算配对状态（别名即时进 getCanonicalMap）。
         async function setAliasFromDetail() {
+            if (blockDynamicSportsDetailEdit()) return;
             const el = document.getElementById('detailAliasCanonical');
             const canonical = el ? el.value.trim() : '';
             if (!canonical) { showStatus('请填写规范名', 'error'); return; }
@@ -9879,7 +9880,7 @@ if(success){
         // 含义由上方常驻图例 + 每点 hover 文字说明；详情里仍有完整文字。
         function channelStatusDots(channel) {
             // 公告和教程是本地短片，不需要节目单/台标配对提示。
-            if (isSystemAnnouncementChannel(channel)) return '';
+            if (isSystemAnnouncementChannel(channel) || dynamicSportsSource(channel)) return '';
             const base = window.location.origin + API_PREFIX;
             const src = channel.logo ? String(channel.logo).replace(/\$\{replace\}/g, base) : '';
             const epgOk = !!channel.epgMatched;
@@ -11748,6 +11749,55 @@ if(success){
         // 频道详情相关功能
         let currentChannelDetail = null;
 
+        // Source identity + original schedule group: names and visible groups can
+        // be changed by users, and fixed sports TV channels are still ordinary TV.
+        function dynamicSportsSource(channel, groupName = '') {
+            if (!channel) return '';
+            const sources = Array.isArray(channel.sourceIds) ? channel.sourceIds : [];
+            if (sources.includes('xt:iqiyi-sports')) return '爱奇艺体育';
+            const raw = String(channel.url || '');
+            let localPath = '';
+            try {
+                const url = new URL(raw.replace(/\$\{replace\}/g, window.location.origin), window.location.href);
+                if (url.origin === window.location.origin) localPath = url.pathname;
+            } catch {}
+            if (/\/iqiyi-sports-(?:vod-)?[1-9]\d{0,19}(?:\.m3u8)?$/.test(localPath)) return '爱奇艺体育';
+            const original = channel.originalGroup || groupName;
+            if (/^体育-(?:昨天|今天|明天)$/.test(original)
+                && (sources.includes('migu') || (!sources.length && /\/\d+(?:\.m3u8)?$/.test(localPath)))) return '咪咕';
+            return '';
+        }
+
+        function blockDynamicSportsDetailEdit() {
+            if (!dynamicSportsSource(currentChannelDetail, currentChannelDetail?.groupName)) return false;
+            showStatus('动态赛事信息由来源更新，不支持固定频道编辑', 'error');
+            return true;
+        }
+
+        function dynamicSportsDetail(channel, source) {
+            const kind = String(channel.name || '').match(/^\[(直播|回放|集锦)\]/)?.[1]
+                || (/回放|回看/.test(channel.name || '') ? '回放' : '赛事');
+            const website = source === '爱奇艺体育' ? 'https://sports.iqiyi.com/' : 'https://www.miguvideo.com/';
+            const status = source === '爱奇艺体育' ? '已通过列表授权筛选，播放时再次校验' : '播放时按当前账号及赛事权益校验';
+            return `
+                <section class="channel-detail-section">
+                    <h4>赛事信息</h4>
+                    <dl class="channel-detail-facts">
+                        <div class="channel-detail-fact channel-detail-fact-wide"><dt>内容名称</dt><dd>${escapeHtml(channel.name || '')}</dd></div>
+                        <div class="channel-detail-fact"><dt>内容类型</dt><dd><span class="channel-detail-badge">${escapeHtml(kind)}</span></dd></div>
+                        <div class="channel-detail-fact"><dt>内容来源</dt><dd>${escapeHtml(source)}</dd></div>
+                        <div class="channel-detail-fact channel-detail-fact-wide"><dt>播放权限</dt><dd>${escapeHtml(status)}</dd></div>
+                    </dl>
+                </section>
+                ${channelDetailPlayback(channel)}
+                <section class="channel-detail-section">
+                    <h4>动态赛事</h4>
+                    <p class="channel-detail-help">赛事名称、日期和列表归属由来源更新，不提供固定电视频道的编辑设置。</p>
+                    <div class="channel-detail-buttons"><a class="btn" href="${website}" target="_blank" rel="noopener noreferrer">打开${escapeHtml(source)}官网</a></div>
+                </section>
+            `;
+        }
+
         // 普通频道与系统频道共用播放区的布局；系统频道不提供外部播放器入口。
         function channelDetailPlayback(channel, includeExternalPlayers = true) {
             if (!channel.url) return '';
@@ -11847,6 +11897,16 @@ if(success){
                         <div class="channel-detail-buttons">${detailAction}</div>
                     </section>
                 `;
+                document.getElementById('channelDetailContent').scrollTop = 0;
+                document.getElementById('channelDetailEditBtn').style.display = 'none';
+                document.getElementById('channelDetailModal').style.display = 'block';
+                return;
+            }
+
+            const dynamicSource = dynamicSportsSource(channel, groupName);
+            if (dynamicSource) {
+                document.getElementById('channelDetailTitle').textContent = `赛事详情 · ${channel.name}`;
+                document.getElementById('channelDetailContent').innerHTML = dynamicSportsDetail(channel, dynamicSource);
                 document.getElementById('channelDetailContent').scrollTop = 0;
                 document.getElementById('channelDetailEditBtn').style.display = 'none';
                 document.getElementById('channelDetailModal').style.display = 'block';
@@ -12002,6 +12062,7 @@ if(success){
 
         // 上传当前频道台标（issue #40）：存 data/logos/<频道名>.<ext>，最高优先级、保存即生效
         async function uploadCurrentChannelLogo(inputEl) {
+            if (blockDynamicSportsDetailEdit()) return;
             const file = inputEl.files && inputEl.files[0];
             if (!file || !currentChannelDetail) return;
             if (file.size > 3 * 1024 * 1024) { showStatus('图片过大（请小于 3MB）', 'error'); inputEl.value = ''; return; }
@@ -12029,6 +12090,7 @@ if(success){
 
         // 移除当前频道的本地上传台标
         async function removeCurrentChannelLogo() {
+            if (blockDynamicSportsDetailEdit()) return;
             if (!currentChannelDetail) return;
             try {
                 const resp = await fetch(API_PREFIX + '/api/remove-logo', {
@@ -12049,6 +12111,7 @@ if(success){
 
         // 复制当前频道到所选分组（issue #37）：后端为每个目标分组建一条独立的直连副本
         async function copyCurrentChannelToGroups() {
+            if (blockDynamicSportsDetailEdit()) return;
             if (!currentChannelDetail) return;
             const sel = document.getElementById('channelCopySelect');
             if (!sel) return;
@@ -12074,6 +12137,7 @@ if(success){
 
         // 将当前详情中的频道移动到所选分组（单频道归类）
         async function moveCurrentChannel() {
+            if (blockDynamicSportsDetailEdit()) return;
             if (!currentChannelDetail) return;
             if (isSystemAnnouncementChannel(currentChannelDetail)) {
                 showStatus('系统公告频道固定在第一位', 'error');
@@ -12120,6 +12184,7 @@ if(success){
 
         // 重命名当前详情中的频道（单频道重命名）
         async function renameCurrentChannel() {
+            if (blockDynamicSportsDetailEdit()) return;
             if (!currentChannelDetail) return;
             if (isSystemAnnouncementChannel(currentChannelDetail)) {
                 showStatus('系统公告频道不支持重命名', 'error');
@@ -12389,6 +12454,7 @@ if(success){
         }
 
         function editChannelFromDetail() {
+            if (blockDynamicSportsDetailEdit()) return;
             if (!currentChannelDetail || !currentChannelDetail.isExternal) {
                 showStatus('此频道不可编辑', 'error');
                 return;
