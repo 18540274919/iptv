@@ -75,30 +75,34 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
       return { ...await captureContext(context, event), hasLogin: false }
     } finally { await context?.close().catch(() => {}); pages-- }
   }
+  async function verifyAccount(context) {
+    const page = await context.newPage()
+    try {
+      // The same logged-in profile gets P00100 on top-level navigation to
+      // this API, but A00000 from the official site's credentialed fetch.
+      await page.goto('https://sports.iqiyi.com/resource/pc/index_pc.html', { waitUntil: 'domcontentloaded', timeout: 20000 })
+      const account = await page.evaluate(async () => {
+        const response = await fetch('https://passport.iqiyi.com/apis/user/info.action', { credentials: 'include' })
+        const body = await response.json()
+        return { ok: response.ok, code: body.code, hasUser: !!(body.data?.userinfo || body.data?.userInfo || body.data?.uid || body.data?.user_id) }
+      })
+      if (account.ok && account.code === 'P00100') throw Object.assign(new Error('官方未确认账号登录有效，请重新登录'), { credential: true })
+      if (!account.ok || account.code !== 'A00000' || !account.hasUser) throw new Error('官方账号状态核验未完成，请稍后重试')
+    } finally { await page.close() }
+  }
   async function verify(context, event) {
-    if (event.kind) {
-      // A replay card may be marked paid while its video is publicly playable.
-      // Complete VOD + cookie presence alone cannot validate imported credentials.
-      const page = await context.newPage()
-      try {
-        // The same logged-in profile gets P00100 on top-level navigation to
-        // this API, but A00000 from the official site's credentialed fetch.
-        await page.goto('https://sports.iqiyi.com/resource/pc/index_pc.html', { waitUntil: 'domcontentloaded', timeout: 20000 })
-        const account = await page.evaluate(async () => {
-          const response = await fetch('https://passport.iqiyi.com/apis/user/info.action', { credentials: 'include' })
-          const body = await response.json()
-          return { ok: response.ok, code: body.code, hasUser: !!(body.data?.userinfo || body.data?.userInfo || body.data?.uid || body.data?.user_id) }
-        })
-        if (account.ok && account.code === 'P00100') throw Object.assign(new Error('官方未确认账号登录有效，请重新登录'), { credential: true })
-        if (!account.ok || account.code !== 'A00000' || !account.hasUser) throw new Error('官方账号状态核验未完成，请稍后重试')
-      } finally { await page.close() }
-    }
+    // A replay card may be marked paid while its video is publicly playable.
+    // Complete VOD + cookie presence alone cannot validate imported credentials.
+    if (event.kind) await verifyAccount(context)
     const result = await captureContext(context, event)
     let stream
     try { stream = selectAuthorizedMedia(result, event) }
     catch (error) {
-      if (!event.kind || !error.credential) throw error
-      // An extra-charge tennis replay does not make a valid sports login expire.
+      if (!error.credential) throw error
+      // A paid live room answers a valid account without this match's rights the same
+      // way it answers a logged-out visitor; ask the account API before blaming the login.
+      if (!event.kind) await verifyAccount(context)
+      // An extra-charge tennis replay or single-match room does not make a valid sports login expire.
       return { status: 'authenticated', authenticated: true, entitled: false,
         message: `账号登录有效；${event.title} 尚无完整观看权益。体育会员、单场直播、专项回放按官网分别校验；未兑换任何观赛券。` }
     }
@@ -133,7 +137,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
       await loginPage.setViewport(null)
       await loginPage.goto(event?.officialPage || 'https://www.iqiyi.com/iframe/loginreg', { waitUntil: 'domcontentloaded', timeout: 35000 })
       await loginPage.bringToFront()
-      state = { ...state, status: 'waiting', message: '请在官方窗口完成扫码或短信验证码登录，然后点击检查赛事权限' }
+      state = { ...state, status: 'waiting', message: '请在官方窗口完成扫码或短信验证码登录，然后点击「检查登录与权益」' }
       return snapshot()
     }),
     check: () => action(async () => {
@@ -152,7 +156,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
       return action(async () => {
         await finishLoginWindow()
         const event = await getEvent()
-        if (!event) throw new Error('当前目录没有可核验的会员直播或回放，无法验证导入凭证；请稍后导入或使用官方网页登录')
+        if (!event) throw new Error('当前目录没有可核验的会员直播或回放，无法验证导入凭证；请稍后导入，或在服务本机使用「本机官方网页登录」')
         const b = await ensure(), staging = await b.createBrowserContext()
         try {
           await staging.setCookie(...cookies)
@@ -175,7 +179,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
           state = { ...verified, message: `Cookie 导入成功；${verified.message}` }; revision++
           return snapshot()
         } catch (error) {
-          if (error.credential) throw new Error('导入 Cookie 未获此赛事完整权限，现有登录态保留')
+          if (error.credential) throw new Error('导入的 Cookie 未通过官方登录校验（可能已过期或已退出登录），现有登录态保留')
           throw error
         } finally { await staging.close() }
       })

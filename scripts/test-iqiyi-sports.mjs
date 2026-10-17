@@ -481,3 +481,73 @@ test('anonymous capture uses and closes an isolated browser context without the 
   assert.equal(isolated, 1); assert.equal(contextClosed, 1)
   await auth.shutdown()
 })
+
+test('playback keeps the probed viewing label after the short live record expired', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let clock = 0
+  const filter = createEligibility({ now: () => clock, delay: async () => {}, probe: async () => ({ status: 'allowed', accessLabel: '免费免登录' }) })
+  const item = { id: 'live-free' }
+  assert.equal((await filter.filter([item], { waitMs: 100 })).items[0].accessLabel, '免费免登录')
+  clock += 180000
+  filter.record(item, 'allowed')
+  assert.equal((await filter.filter([item], { waitMs: 100 })).items[0].accessLabel, '免费免登录', '观看中的免费赛事不能改名为「权益已授权」')
+  filter.record(item, 'unknown', '官方节目清单超时'); filter.record(item, 'allowed')
+  assert.equal((await filter.filter([item], { waitMs: 100 })).items[0].accessLabel, '免费免登录', '一次普通失败后恢复播放也保留标签')
+  filter.reset(); filter.record(item, 'allowed')
+  assert.equal((await filter.filter([item], { waitMs: 100 })).items[0].accessLabel, '权益已授权', '换账号后不沿用旧账号的核验标签')
+  await filter.shutdown()
+})
+
+test('an expired positive result stays listed only while its recheck runs, then follows the new verdict', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let clock = 0, gate, verdict = 'allowed'
+  const probe = async () => {
+    if (gate) await gate.promise
+    return verdict === 'allowed' ? { status: 'allowed', accessLabel: '会员' } : { status: 'denied', reason: '缺少权益' }
+  }
+  const hold = () => { let resolve; const promise = new Promise(r => { resolve = r }); gate = { promise, resolve } }
+  const filter = createEligibility({ now: () => clock, delay: async () => {}, probe })
+  const item = { id: 'live-1' }
+  assert.equal((await filter.filter([item], { waitMs: 100 })).items.length, 1)
+  clock += 300000; hold(); verdict = 'denied'
+  let result = await filter.filter([item], { waitMs: 10 })
+  assert.deepEqual(result.items.map(i => i.accessLabel), ['会员'], '五分钟刷新时官网页面慢，不能把在播直播从列表拿掉')
+  assert.equal(result.unknown, 0); assert.equal(result.warnings.length, 0)
+  gate.resolve(); gate = undefined
+  result = await filter.filter([item], { waitMs: 100 })
+  assert.equal(result.items.length, 0, '复核被拒后照常隐藏'); assert.equal(result.skipped.length, 1)
+  await filter.shutdown()
+
+  verdict = 'allowed'
+  const stuck = createEligibility({ now: () => clock, delay: async () => {}, probe })
+  assert.equal((await stuck.filter([item], { waitMs: 100 })).items.length, 1)
+  clock += 120000 + 10 * 60 * 1000 + 1; hold()
+  result = await stuck.filter([item], { waitMs: 10 })
+  assert.equal(result.items.length, 0, '复核卡住超过宽限期不再沿用旧结论'); assert.equal(result.unknown, 1)
+  gate.resolve(); gate = undefined
+  await stuck.shutdown()
+})
+
+test('a valid account without rights to the chosen paid live room is not reported as an expired login', async () => {
+  let listener, valid = true, accountChecks = 0
+  const preview = { ...authorized(), bossRet: { code: 'A00000', previewTime: 180, data: { prv: '1' } } }
+  const page = { on: (_event, fn) => { listener = fn }, close: async () => {}, cookies: async () => [{ name: 'P00001', value: 'fixture' }],
+    evaluate: async () => { accountChecks++; return { ok: true, code: valid ? 'A00000' : 'P00100', hasUser: valid } },
+    goto: async url => {
+      if (url.includes('/resource/pc/index_pc.html')) return
+      await listener({ url: () => 'https://live.video.iqiyi.com/live', text: async () => JSON.stringify({ data: preview }) })
+    } }
+  const browser = { connected: true, on: () => {}, defaultBrowserContext: () => ({ newPage: async () => page }),
+    createBrowserContext: async () => ({ newPage: async () => page, setCookie: async () => {}, close: async () => {} }) }
+  const auth = createBrowserAuth({ getEvent: async () => event, profile: '/tmp/iptv-iqiyi-auth-fixture', launchImpl: async () => browser, closeImpl: async () => {} })
+  const restricted = await auth.flow.check()
+  assert.equal(restricted.status, 'authenticated'); assert.equal(restricted.authenticated, true)
+  assert.equal(restricted.entitled, false); assert.match(restricted.message, /账号登录有效/)
+  assert.equal(accountChecks, 1)
+  valid = false
+  const expired = await auth.flow.check()
+  assert.equal(expired.status, 'error'); assert.equal(expired.authenticated, false)
+  assert.match(expired.message, /重新登录/)
+  await assert.rejects(auth.flow.import('P00001=expired; QC005=fixture'), /未通过官方登录校验/)
+  await auth.shutdown()
+})
