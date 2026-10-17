@@ -1,4 +1,4 @@
-import { createCatalog, officialFetch, selectAuthorizedMedia, checkManifest, validateMediaUrl, claimsRef } from './api.js'
+import { createCatalog, officialFetch, selectAuthorizedMedia, checkManifest, validateMediaUrl, claimsRef, accessLabel } from './api.js'
 import { createEligibility } from './eligibility.js'
 import { createBrowserAuth } from './auth.js'
 
@@ -14,11 +14,22 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
     isPaused: () => capturing || auth.flow.status().active || auth.flow.status().status === 'waiting',
     probe: async event => {
       try {
+        // A catalog "free" flag is only a candidate. Confirm the complete stream
+        // with a fresh, cookie-free context before advertising anonymous playback.
+        if (event.free && auth.captureAnonymous) {
+          try {
+            const captured = await auth.captureAnonymous(event)
+            const result = selectAuthorizedMedia(captured, event)
+            if (!event.kind && captured.data.id && String(captured.data.id) !== event.qipuId) throw new Error('官方播放房间与目录不一致')
+            await manifest({ ...result, referer: event.officialPage })
+            return { status: 'allowed', accessLabel: accessLabel(event, true) }
+          } catch { /* Anonymous failure does not revoke the owner's paid access. */ }
+        }
         const captured = await auth.capture(event)
         const result = selectAuthorizedMedia(captured, event)
         if (!event.kind && captured.data.id && String(captured.data.id) !== event.qipuId) throw new Error('官方播放房间与目录不一致')
         await manifest({ ...result, referer: event.officialPage })
-        return { status: 'allowed' }
+        return { status: 'allowed', accessLabel: accessLabel(event, captured.hasLogin === false) }
       } catch (error) {
         if (error.credential || /DRM|加密|H\.264|CDN|不一致/.test(error.message)) return { status: 'denied', reason: error.message }
         return { status: 'unknown', reason: '官方权限核验未完成，请稍后重试' }

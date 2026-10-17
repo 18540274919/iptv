@@ -11814,6 +11814,7 @@ if(success){
         function dynamicSportsDetail(channel, source) {
             const kind = String(channel.name || '').match(/^\[(直播|回放|集锦)\]/)?.[1]
                 || (/回放|回看/.test(channel.name || '') ? '回放' : '赛事');
+            const access = source === '爱奇艺体育' ? String(channel.name || '').match(/^\[(?:直播|回放|集锦)\]\s*\[(免费免登录|会员(?: \/ 单场付费)?(?: \/ 专项权益)?|单场付费(?: \/ 专项权益)?|专项权益|权益已授权)\]/)?.[1] || '权益类型待确认' : '';
             const website = source === '爱奇艺体育' ? 'https://sports.iqiyi.com/' : 'https://www.miguvideo.com/';
             const status = source === '爱奇艺体育' ? '已通过列表授权筛选，播放时再次校验' : '播放时按当前账号及赛事权益校验';
             return `
@@ -11824,12 +11825,13 @@ if(success){
                         <div class="channel-detail-fact"><dt>内容类型</dt><dd><span class="channel-detail-badge">${escapeHtml(kind)}</span></dd></div>
                         <div class="channel-detail-fact"><dt>内容来源</dt><dd>${escapeHtml(source)}</dd></div>
                         <div class="channel-detail-fact channel-detail-fact-wide"><dt>播放权限</dt><dd>${escapeHtml(status)}</dd></div>
+                        ${access ? `<div class="channel-detail-fact channel-detail-fact-wide"><dt>观看条件</dt><dd>${escapeHtml(access)}</dd></div>` : ''}
                     </dl>
                 </section>
                 ${channelDetailPlayback(channel)}
                 <section class="channel-detail-section">
                     <h4>动态赛事</h4>
-                    <p class="channel-detail-help">赛事名称、日期和列表归属由来源更新，不提供固定电视频道的编辑设置。</p>
+                    <p class="channel-detail-help">赛事名称、日期和列表归属由来源更新，不提供固定电视频道的编辑设置。${access ? '免费免登录已通过匿名完整播放核验；会员、单场付费和专项权益表示官网支持的权益类型，可同时存在，不代表本人的购买记录。权益已授权表示当前可完整观看，但官网未明确权益类型。' : ''}</p>
                     <div class="channel-detail-buttons"><a class="btn" href="${website}" target="_blank" rel="noopener noreferrer">打开${escapeHtml(source)}官网</a></div>
                 </section>
             `;

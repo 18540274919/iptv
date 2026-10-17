@@ -5,7 +5,7 @@ export default {
   id: 'iqiyi-sports', name: '爱奇艺体育', category: 'live',
   description: '官方体育直播、赛事回放及集锦动态目录；免费赛事或本人账号有权观看的赛事，播放时由官方网页取票。支持网页登录与 Cookie 导入，优先 H.264 1080P 50帧档（以赛事实际提供为准）。',
   capabilities: { cache: 'disk', resolve: true, epg: false, catchup: false },
-  catalogVersion: 1,
+  catalogVersion: 2,
   outputGroupName: GROUP_NAME, channelHlsMode: 'proxy', resolveBurstGuard: true,
   defaultRefreshMinutes: 5, refreshConfigurable: false,
   refreshDescription: '每五分钟同步官方直播、回放和集锦；播放时用缓存目录、过期在后台重扫；授权约两分半在后台复核，四分钟硬过期或 CDN 拒绝时当场重新校验。',

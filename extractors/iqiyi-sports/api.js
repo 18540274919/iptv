@@ -7,22 +7,39 @@ export const claimsRef = ref => /^iqiyi-sports-(?:vod-)?[1-9]\d{0,19}$/.test(Str
 export const eventName = event => {
   const label = event.kind === 'replay' ? '回放' : event.kind === 'highlight' ? '集锦' : '直播'
   const date = event.kind && event.date ? `${event.date.slice(5).replace('-', '月')}日 ` : ''
-  return `[${label}] ${date}${event.title}`
+  const access = event.accessLabel ? `[${event.accessLabel}] ` : ''
+  return `[${label}] ${access}${date}${event.title}`
 }
 export const eventRef = event => `iqiyi-sports-${event.id}`
+// These are purchase/entitlement options from the official catalog, not the
+// account's purchase history. Several options may apply to the same program.
+export function entitlementOptions(pay = {}) {
+  const labels = []
+  if (String(pay.isPublicRight) === '1' || String(pay.isPublic2Right) === '1') labels.push('会员')
+  if (String(pay.isSingleRight) === '1') labels.push('单场付费')
+  if (String(pay.isSpecificRight) === '1') labels.push('专项权益')
+  return labels
+}
+export function accessLabel(event, anonymous = false) {
+  if (anonymous) return '免费免登录'
+  const options = ['会员', '单场付费', '专项权益'].filter(label => event.entitlementOptions?.includes(label))
+  return options.length ? options.join(' / ') : '权益已授权'
+}
 export function normalizeVods(body) {
   if (String(body?.resCode) !== '200' || !body.retData || typeof body.retData !== 'object') throw new Error('爱奇艺官方点播目录格式变化')
   const found = new Map()
-  function add(row, jump, kind, title, date, free) {
+  function add(row, jump, kind, title, date, free, pay = {}) {
     const qipuId = String(jump?.qipuid || row.commonBaseInfo?.qipuid || '')
     const officialPage = jump?.iqiyiPC
     if (!/^[1-9]\d{0,19}$/.test(qipuId) || !/^https:\/\/sports\.iqiyi\.com\/resource\/pcw\/play\/[a-z0-9]+$/.test(officialPage || '')
         || !title || /宗教|佛教|基督|福音|讲经/.test(title)) return
     const item = { id: `vod-${qipuId}`, qipuId, kind, officialPage, title: title.replace(/[\r\n]/g, ' ').replace(/^[【\[](?:回放|集锦)[】\]]\s*/, ''),
       date: /^\d{4}-\d{2}-\d{2}/.test(date || '') ? date.slice(0, 10) : '',
-      publishedAt: String(date || ''), free }
+      publishedAt: String(date || ''), free, entitlementOptions: entitlementOptions(pay) }
     const prior = found.get(item.id)
-    if (!prior || (!prior.date && item.date)) found.set(item.id, item)
+    if (!prior) found.set(item.id, item)
+    else found.set(item.id, { ...(!prior.date && item.date ? item : prior),
+      entitlementOptions: [...new Set([...prior.entitlementOptions, ...item.entitlementOptions])] })
   }
   walk(body.retData, row => {
     if (!row || typeof row !== 'object') return
@@ -37,7 +54,7 @@ export function normalizeVods(body) {
     const title = special?.title, marker = base.customerMakerName || special?.tagName || ''
     const kind = /回放|全场/.test(marker) || /^[【\[][^】\]]*回放/.test(title || '') ? 'replay'
       : /集锦/.test(marker) || /^[【\[]集锦/.test(title || '') ? 'highlight' : ''
-    if (kind) add(row, row.jumpInfo, kind, title, special?.publishTime, String(base.payInfo?.isFree) === '1')
+    if (kind) add(row, row.jumpInfo, kind, title, special?.publishTime, String(base.payInfo?.isFree) === '1', base.payInfo)
   })
   return [...found.values()]
 }
@@ -65,7 +82,7 @@ export function normalizeEvents(body) {
         || !match.title || /宗教|佛教|基督|福音|讲经/.test(match.title) || seen.has(String(match.matchId))) return
     seen.add(String(match.matchId))
     result.push({ id: String(match.matchId), title: String(match.title).replace(/[\r\n]/g, ' '), officialPage: page,
-      qipuId: String(match.qipuid || ''), free: String(match.isFree) === '1', startTime: match.matchRoomStartTime })
+      qipuId: String(match.qipuid || ''), free: String(match.isFree) === '1', startTime: match.matchRoomStartTime, entitlementOptions: entitlementOptions(row.commonBaseInfo?.payInfo) })
   })
   return result
 }
@@ -125,7 +142,9 @@ export function createCatalog({ fetchImpl = officialFetch, now = Date.now } = {}
         if (!data) continue
         for (const vod of data.vods) {
           const prior = vodById.get(vod.id)
-          if (!prior || (!prior.date && vod.date)) vodById.set(vod.id, vod)
+          if (!prior) vodById.set(vod.id, vod)
+          else vodById.set(vod.id, { ...(!prior.date && vod.date ? vod : prior),
+            entitlementOptions: [...new Set([...prior.entitlementOptions, ...vod.entitlementOptions])] })
         }
         for (const event of data.events) if (!byId.has(event.id)) byId.set(event.id, event)
         for (const link of data.links.sources) if (!seen.has(link) && !pending.includes(link)) pending.push(link)
@@ -144,11 +163,12 @@ export function createCatalog({ fetchImpl = officialFetch, now = Date.now } = {}
         const match = body?.retData?.matchBaseInfo
         if (String(body?.resCode) !== '200' || String(match?.matchId) !== event.id || String(match?.qipuid) !== event.qipuId
             || !['0', '1', '2'].includes(String(match?.status))) throw new Error('官方赛事详情格式或身份不匹配')
-        return String(match.status) === '1'
+        return String(match.status) === '1' ? { ...event, free: String(match.isFree) === '1',
+          entitlementOptions: [...new Set([...event.entitlementOptions, ...entitlementOptions(body.retData.commonBaseInfo?.payInfo)])] } : null
       }))
       for (let i = 0; i < details.length; i++) {
         const detail = details[i], event = batch[i]
-        if (detail.status === 'fulfilled') { if (detail.value) { events.push(event); verifiedLive++ } }
+        if (detail.status === 'fulfilled') { if (detail.value) { events.push(detail.value); verifiedLive++ } }
         else {
           warnings.push(`爱奇艺在播状态未确认：${event.title}（${detail.reason.message}）`)
           const previous = cache?.events.find(e => e.id === event.id)

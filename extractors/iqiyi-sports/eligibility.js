@@ -50,7 +50,7 @@ export function createEligibility({ probe, now = Date.now, onUpdate = () => {}, 
       const allowed = [], skipped = [], unknown = []
       for (const item of items) {
         const record = records.get(item.id)
-        if (record?.expires > now() && record.status === 'allowed') allowed.push(item)
+        if (record?.expires > now() && record.status === 'allowed') allowed.push({ ...item, accessLabel: record.accessLabel || '权益已授权' })
         else if (record?.expires > now() && record.status === 'denied') skipped.push({ ref: `iqiyi-sports-${item.id}`, reason: record.reason })
         else unknown.push(item.id)
       }
@@ -60,7 +60,7 @@ export function createEligibility({ probe, now = Date.now, onUpdate = () => {}, 
     record(item, status, reason = '') {
       activated = true
       const changed = records.get(item.id)?.status !== status
-      records.set(item.id, { status, reason, expires: now() + (status === 'unknown' ? 60000 : item.kind ? status === 'allowed' ? 1800000 : 600000 : 120000) })
+      records.set(item.id, { status, reason, accessLabel: status === 'allowed' && records.get(item.id)?.expires > now() ? records.get(item.id)?.accessLabel : undefined, expires: now() + (status === 'unknown' ? 60000 : item.kind ? status === 'allowed' ? 1800000 : 600000 : 120000) })
       queue.delete(item.id)
       if (changed) notify(true)
     },

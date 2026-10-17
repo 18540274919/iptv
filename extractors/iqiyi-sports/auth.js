@@ -66,6 +66,15 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     pages++
     try { return await captureContext((await ensure()).defaultBrowserContext(), event) } finally { pages-- }
   }
+  async function captureAnonymous(event) {
+    if (busy || state.status === 'waiting') throw new Error('爱奇艺正在处理登录操作，请稍后核验')
+    pages++
+    let context
+    try {
+      context = await (await ensure()).createBrowserContext()
+      return { ...await captureContext(context, event), hasLogin: false }
+    } finally { await context?.close().catch(() => {}); pages-- }
+  }
   async function verify(context, event) {
     if (event.kind) {
       // A replay card may be marked paid while its video is publicly playable.
@@ -174,5 +183,5 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     cancel: () => action(async () => { await finishLoginWindow(); state = { ...state, status: 'idle', message: '登录窗口已关闭，后续核验在后台运行；已保存的登录态保留' }; return snapshot() }),
     close: () => action(async () => { await close(); state = { ...state, status: state.status === 'waiting' ? 'idle' : state.status, message: '后台浏览器已关闭，已保存的登录态会在下次播放时恢复' }; return snapshot() }),
   }
-  return { flow, capture, revision: () => revision, shutdown: close }
+  return { flow, capture, captureAnonymous, revision: () => revision, shutdown: close }
 }

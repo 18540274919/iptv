@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createCatalog, CONFIG_URL, normalizeEvents, normalizeVods, eventName, selectVodStream, selectAuthorizedStream, validateMediaUrl } from '../extractors/iqiyi-sports/api.js'
+import { createCatalog, CONFIG_URL, normalizeEvents, normalizeVods, eventName, entitlementOptions, accessLabel, selectVodStream, selectAuthorizedStream, validateMediaUrl } from '../extractors/iqiyi-sports/api.js'
 import { parseCookies } from '../extractors/iqiyi-sports/cookies.js'
 import { createBrowserAuth } from '../extractors/iqiyi-sports/auth.js'
 import { createRuntime } from '../extractors/iqiyi-sports/runtime.js'
@@ -429,5 +429,55 @@ test('visible login is exclusive and subsequent checks and captures reopen the p
   assert.equal(noEvent.visible, false)
   assert.notEqual(noEvent.status, 'waiting', 'empty catalogs must not leave a visible login session or pause scans forever')
   assert.ok(closed >= 3)
+  await auth.shutdown()
+})
+
+test('official payment options remain nonexclusive and never prove anonymous access or purchase history', () => {
+  const rights = { isFree: '1', isPublicRight: '1', isSingleRight: '1', isSpecificRight: '1' }
+  const options = entitlementOptions(rights)
+  assert.deepEqual(options, ['会员', '单场付费', '专项权益'])
+  assert.equal(accessLabel({ free: true }), '权益已授权', 'catalog free alone is insufficient')
+  assert.equal(accessLabel({ entitlementOptions: options }), '会员 / 单场付费 / 专项权益')
+  assert.equal(accessLabel({ entitlementOptions: options }, true), '免费免登录')
+  const normalized = normalizeEvents(catalogBody([{ ...row, commonBaseInfo: { payInfo: rights } }]))[0]
+  assert.deepEqual(normalized.entitlementOptions, options)
+  const vod = normalizeVods(catalogBody([{ ...clipCard, commonBaseInfo: { ...clipCard.commonBaseInfo, payInfo: rights } }]))[0]
+  assert.deepEqual(vod.entitlementOptions, options)
+  assert.match(eventName({ ...vod, accessLabel: '免费免登录' }), /^\[集锦\] \[免费免登录\]/)
+})
+
+test('free labels require a complete anonymous probe, failed probes preserve paid classification and previews stay hidden', async () => {
+  const base = normalizeVods(catalogBody([endedCard]))[0]
+  const items = ['free', 'paid', 'preview'].map((key, i) => ({ ...base, id: `vod-${i + 1}`, qipuId: String(i + 1), title: key, free: true,
+    entitlementOptions: key === 'paid' ? ['单场付费', '专项权益'] : [] }))
+  let anonymousCalls = 0, ownerCalls = 0
+  const auth = { revision: () => 0, flow: { status: () => ({}) }, shutdown: async () => {},
+    captureAnonymous: async item => { anonymousCalls++; return vodCapture(item, item.title === 'free' ? {} : { isPreview: 1 }) },
+    capture: async item => { ownerCalls++; return { ...vodCapture(item, item.title === 'preview' ? { isPreview: 1 } : {}), hasLogin: true } },
+  }
+  const runtime = createRuntime({ auth, catalog: { discover: async () => ({ events: [], vods: items }) } })
+  const result = await runtime.filterPlayable(items)
+  assert.deepEqual(result.items.map(i => i.accessLabel), ['免费免登录', '单场付费 / 专项权益'])
+  assert.equal(result.skipped.length, 1)
+  assert.equal(anonymousCalls, 3); assert.equal(ownerCalls, 2)
+  await runtime.shutdown()
+})
+
+test('anonymous capture uses and closes an isolated browser context without the persisted account', async () => {
+  let isolated = 0, contextClosed = 0
+  const makePage = () => {
+    let listener
+    return { on: (_event, fn) => { listener = fn }, close: async () => {}, cookies: async () => [],
+      goto: async () => listener({ url: () => 'https://live.video.iqiyi.com/live', text: async () => JSON.stringify({ data: { boss: 0, streams: authorized().streams } }) }) }
+  }
+  const browser = { connected: true, on: () => {},
+    defaultBrowserContext: () => { throw new Error('anonymous probe must not read owner context') },
+    createBrowserContext: async () => { isolated++; return { newPage: async () => makePage(), close: async () => { contextClosed++ } } },
+  }
+  const auth = createBrowserAuth({ profile: '/tmp/iptv-iqiyi-auth-fixture', launchImpl: async () => browser, closeImpl: async () => {} })
+  const result = await auth.captureAnonymous({ ...event, free: true })
+  assert.equal(result.hasLogin, false)
+  assert.equal(selectAuthorizedStream(result.data, result.hasLogin).member, false)
+  assert.equal(isolated, 1); assert.equal(contextClosed, 1)
   await auth.shutdown()
 })

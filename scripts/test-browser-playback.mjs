@@ -124,3 +124,9 @@ loginUI.renderIqiyiLoginState({ status: 'error', message: '登录已失效，请
 assert.match(loginNodes.get('iqiyiLoginState').textContent, /登录已失效/)
 assert.match(readFileSync(new URL('../extractors/iqiyi-sports/index.js', import.meta.url), 'utf8'), /category: 'live'/)
 console.log('爱奇艺 NAS 登录界面测试通过：远程/无桌面/本机窗口/额外权益/失效状态')
+for (const label of ['免费免登录', '会员', '单场付费', '会员 / 单场付费 / 专项权益', '权益已授权']) {
+  const html = ui.dynamicSportsDetail({ ...iqiyi, name: `[回放] [${label}] 测试赛事` }, '爱奇艺体育')
+  assert.ok(html.includes(`<dt>观看条件</dt><dd>${label}</dd>`))
+  assert.match(html, /不代表本人的购买记录/)
+}
+console.log('爱奇艺观看条件标签详情测试通过')
