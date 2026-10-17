@@ -93,3 +93,34 @@ for (const control of ['channelMoveSelect', 'channelRenameInput', 'channelLogoPr
 assert.deepEqual(Array.from(ui.channelsMissingLogo(), item => item.id), ['fixed-tv'])
 assert.doesNotMatch(ui.dynamicSportsDetail({ ...iqiyi, name: '<script>bad</script>' }, '爱奇艺体育'), /<script>/)
 console.log('动态赛事详情测试通过：爱奇艺/咪咕赛事精简，固定电视频道保留原有编辑功能（纯静态样例）')
+
+// NAS UI scenarios are offline: no login, cookie transmission or source fetch.
+const loginRenderer = admin.match(/^ {8}function renderIqiyiLoginState\([^]*?^ {8}\}/m)?.[0]
+assert.ok(loginRenderer)
+const loginNodes = new Map()
+const loginWindow = { location: { hostname: '192.168.1.20' } }
+const loginUI = runInNewContext(`let iqiyiLoginBusy = false; ${loginRenderer}; ({ renderIqiyiLoginState })`, {
+  window: loginWindow,
+  document: { getElementById(id) { if (!loginNodes.has(id)) loginNodes.set(id, { style: {}, dataset: {} }); return loginNodes.get(id) } },
+})
+loginUI.renderIqiyiLoginState({ available: true, authenticated: true, entitled: false, running: true })
+assert.equal(loginNodes.get('iqiyiLocalLoginActions').style.display, 'none', 'NAS hides server desktop controls')
+assert.match(loginNodes.get('iqiyiLoginState').textContent, /已登录.*额外权益/)
+assert.equal(loginNodes.get('iqiyiLoginImport').disabled, false, 'NAS can import cookies')
+loginWindow.location.hostname = 'localhost'
+loginUI.renderIqiyiLoginState({ available: false })
+assert.equal(loginNodes.get('iqiyiLocalLoginActions').style.display, 'none', 'headless localhost cannot open a desktop')
+loginUI.renderIqiyiLoginState({ available: true, running: false })
+assert.equal(loginNodes.get('iqiyiLocalLoginActions').style.display, '')
+assert.equal(loginNodes.get('iqiyiLoginCancel').style.display, 'none')
+assert.equal(loginNodes.get('iqiyiLoginClose').style.display, 'none')
+loginUI.renderIqiyiLoginState({ available: true, running: true, visible: true, status: 'waiting' })
+assert.equal(loginNodes.get('iqiyiLoginOpen').disabled, true)
+assert.equal(loginNodes.get('iqiyiLoginCancel').style.display, '')
+assert.match(loginNodes.get('iqiyiLoginState').textContent, /等待/)
+loginUI.renderIqiyiLoginState({ available: true, active: true })
+assert.equal(loginNodes.get('iqiyiLoginImport').disabled, true)
+loginUI.renderIqiyiLoginState({ status: 'error', message: '登录已失效，请重新导入' })
+assert.match(loginNodes.get('iqiyiLoginState').textContent, /登录已失效/)
+assert.match(readFileSync(new URL('../extractors/iqiyi-sports/index.js', import.meta.url), 'utf8'), /category: 'live'/)
+console.log('爱奇艺 NAS 登录界面测试通过：远程/无桌面/本机窗口/额外权益/失效状态')

@@ -105,11 +105,11 @@ test('readable legacy topics are included and total directory failure rejects in
   offline = false
   assert.equal((await catalog.discover()).events.length, 1)
 })
-test('registered account module emits proxy HLS refs without signed media URLs or fake posters', async () => {
+test('registered network live module emits proxy HLS refs without signed media URLs or fake posters', async () => {
   assert.equal(getModule('iqiyi-sports'), module)
   assert.equal(resolverFor('iqiyi-sports-1200050820'), module)
   assert.equal(resolverFor('iqiyi-sports-1200050820/extra'), null)
-  assert.equal(module.category, 'account')
+  assert.equal(module.category, 'live')
   const result = await module.fetch({}, { filterPlayable: async items => ({ items, warnings: [], skipped: [] }), catalog: { discover: async () => ({ events: [event], warnings: [] }) } })
   const channel = result.groups[0].dataList[0]
   assert.equal(channel.proxyHls, true); assert.equal(channel.catchup, 'none'); assert.equal(channel.logo, '')
