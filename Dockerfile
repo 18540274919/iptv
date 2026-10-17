@@ -23,10 +23,6 @@ RUN if [ -f package-lock.json ]; then \
 # 会累积成僵尸(defunct)进程；tini 负责转发信号并回收这些孤儿进程。
 RUN apk add --no-cache tini
 
-# 爱奇艺影视发布清单前用 ffmpeg 解码开头和末尾各 5 秒做自检（可选）：缺了就只做清单级核验，
-# 不影响其他功能，也不连累 tini 的安装。
-RUN apk add --no-cache ffmpeg || echo "ffmpeg 不可用：爱奇艺影视跳过解码自检"
-
 # 安装系统 Chromium 用于网页抓取功能（可选）
 # 注意：某些架构（如 s390x）可能没有 chromium 包，失败时跳过
 RUN apk add --no-cache \

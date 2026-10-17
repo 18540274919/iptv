@@ -1,5 +1,4 @@
 import http from "node:http"
-import { handleVODRequest } from "./extractors/iqiyi-vod/index.js"
 import { localRequestHandlerFor, resolverFor, shutdownModules } from './extractors/registry.js'
 import { pipeFlv } from './utils/flvProxy.js'
 import { readFileSync, mkdirSync, existsSync, statSync } from "node:fs"
@@ -1046,13 +1045,6 @@ async function handleRequest(req, res) {
     res.end(`身份认证失败`);
     return
   }
-
-  // Authenticated VOD application, admin only: playback uses the owner's membership, so
-  // user tokens get 403 on every route.
-  if (await handleVODRequest(req, res, {
-    routePath, origin: originOf(req), accessPrefix, admin: passAuthed,
-    enabled: getExtractorManager().isModuleEnabled({ id: 'iqiyi-vod' }),
-  })) return
 
   // 项目自有公告短片与台标。视频支持 Range/HEAD，兼容 AVPlayer/APTV 等会先探测、
   // 再按字节分段读取 MP4 的播放器；路由放在鉴权之后，密码和用户令牌不会被绕过。
