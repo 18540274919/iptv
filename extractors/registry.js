@@ -155,6 +155,7 @@ import beidou from './beidou/index.js'
 import beijing from './beijing/index.js'
 import chongqing from './chongqing/index.js'
 import sichuan from './sichuan/index.js'
+import chengdu from './chengdu/index.js'
 import cztv from './cztv/index.js'
 import dalian from './dalian/index.js'
 import douyuLive from './douyu-live/index.js'
@@ -238,6 +239,7 @@ const MODULES = [
   beijing,
   chongqing,
   sichuan,
+  chengdu,
   dalian,
   gansu,
   gdtv,

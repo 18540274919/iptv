@@ -49,6 +49,7 @@
 | `beijing` | 北京广播电视台 | 已接入 | 7/9 电视 | 2 | api.cntv.cn/epg/getEpgInfoByChannelNew?c=btv{n} | 北京时间官网没有节目单，取央视网（代号 btv1 卫视…btv9 新闻，逐个试出来的）；体育休闲 btv6 官方为空，卡酷少儿试不出代号（咪咕、央视频也没有这两台）；北京时间 App 有节目单页面，但包是 360 加固、在模拟器里启动即自杀，正式版也不信任用户证书，接口拿不到，不再往下（不绕过 App 的防护）；电视频道要部署者 Cookie 才出现，公开部分是慢直播 |
 | `chongqing` | 重庆 | 无官方节目单 | — | — | — | 频道详情的 playbillid / billcontent 为空，其余路径 404 |
 | `sichuan` | 四川 | 无官方节目单 | — | — | — | 官网直播页与四川观察 App（9.11.2 拆包核对）都没有电视节目单；programs/{id}/dates 是栏目往期视频不是节目单；四川卫视由咪咕 / 央视频覆盖，康巴卫视央视网也没收 |
+| `chengdu` | 成都 | 已接入 | 2/27 | 2 | api.cntv.cn/epg/getEpgInfoByChannelNew?c=cdtv1 / cdtv5 | 新闻综合、公共取央视网今明两天节目单；其余主频道代号返回 params error；看度详情 billcontent 全空，官网 playbill 的 CDTV-1 今明两天 lists 均为空，区县暂无可用官方节目单 |
 | `dalian` | 大连 | 已接入 | 3/3 | 2 | wan-dlrm.dlrm.cn/app/tv/programs | 与取流共用匿名 SM2 令牌 |
 | `gansu` | 甘肃 | 已接入 | 1/6 | 2 | api.cntv.cn/epg/getEpgInfoByChannelNew?c=gansu | 甘肃台自己的 getTvProgramList 全空、也不是带时间的节目表；甘肃卫视取央视网（央视频也有），五个地面频道央视网、央视频都没收 |
 | `gdtv` | 广东 | 已接入 | 14/17 | 2 | gdtv-api.gdtv.cn/api/tv/v2/tvMenu | HMAC-SHA256 签名，key/secret 取自官网 WASM 签名模块（别直接跑官网签名脚本，里面有反 Node 陷阱）；经典剧、纪录片、健康官方为空 |
