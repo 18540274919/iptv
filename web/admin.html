@@ -2294,7 +2294,7 @@
         html { background: var(--ui-bg); scrollbar-gutter: stable; }
         body {
             min-height: 100vh;
-            padding: 0 26px 26px;
+            padding: 26px;
             background: var(--ui-bg);
             color: var(--ui-text);
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Segoe UI", sans-serif;
@@ -2305,108 +2305,92 @@
         ::selection { color: #fff; background: var(--ui-accent); }
         .container { max-width: 1720px; }
 
-        /* 平直页头：文字导航居中，品牌与工具各居一侧。 */
+        /* 顶栏：品牌、主导航、运维操作各自成组 */
+        /* 吸顶外层覆盖顶部留白和圆角背后，避免滚动内容从顶栏周围露出。 */
         .header-shell {
-            --ui-line: #e2e3da;
-            --ui-text: #282c29;
-            --ui-text-secondary: #62675f;
-            --ui-accent: #35735c;
+            --header-inset: 26px;
             position: sticky;
             top: 0;
             z-index: 100;
-            margin-bottom: 22px;
+            padding-top: var(--header-inset);
+            margin-top: calc(-1 * var(--header-inset));
+            margin-bottom: 14px;
             background: var(--ui-page-background);
             background-attachment: fixed;
         }
         .header {
             position: relative;
             top: auto;
-            padding: 0;
+            padding: 12px 14px;
             margin-bottom: 0;
-            border: 0;
-            border-radius: 0;
-            background: transparent;
-            box-shadow: none;
+            border: 1px solid rgba(255, 255, 255, .9);
+            border-radius: var(--ui-radius-panel);
+            background: linear-gradient(150deg, #fff, #f7fbf6);
+            box-shadow: var(--ui-shadow-header);
         }
         .tabs {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-            min-height: 76px;
-            gap: 36px;
-            align-items: stretch;
+            min-height: 52px;
+            gap: 18px;
             border-bottom: 0;
         }
         .brand {
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            align-self: center;
-            justify-self: start;
             flex: 0 0 auto;
-            gap: 10px;
-            padding: 0;
-            color: var(--ui-text);
+            margin-left: 6px;
+            padding: 0 8px;
             text-decoration: none;
         }
-        .brand:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 5px; border-radius: 5px; }
-        .brand-mark { display: block; flex: 0 0 auto; width: 32px; height: 32px; border-radius: 7px; object-fit: contain; }
-        .brand-name { font-size: 21px; font-weight: 650; letter-spacing: -.6px; line-height: 1; }
-        .brand:hover { color: var(--ui-accent); }
+        .brand:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 4px; border-radius: 6px; }
+        .brand-mark { display: block; flex: 0 0 auto; width: 44px; height: 44px; border-radius: 10px; object-fit: contain; transition: opacity .16s ease; }
+        .brand:hover .brand-mark { opacity: .86; }
         .tabs-left {
-            display: flex;
-            flex: 0 1 auto;
-            align-items: stretch;
-            justify-content: flex-start;
-            gap: 28px;
-            width: auto;
-            max-width: none;
-            margin-left: 0;
-            padding: 0;
-            border: 0;
-            border-radius: 0;
-            background: transparent;
-            box-shadow: none;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            flex: 0 1 50%;
+            width: 50%;
+            max-width: 860px;
+            padding: 2px;
+            gap: 2px;
+            border: 1px solid var(--ui-line);
+            border-radius: 10px;
+            background: var(--ui-surface-strong);
         }
         .tab {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: auto;
-            min-height: 44px;
-            margin-bottom: -1px;
-            padding: 0 2px;
+            width: 100%;
+            min-height: 40px;
+            padding: 9px 18px;
             border: 0;
-            border-bottom: 2px solid transparent;
-            border-radius: 0;
-            background: transparent;
+            border-radius: 7px;
             color: var(--ui-text-secondary);
             font-size: 14px;
-            font-weight: 450;
-            line-height: 1.4;
-            white-space: nowrap;
-            transition: color .16s ease, border-color .16s ease;
-        }
-        .tab:hover { color: var(--ui-text); background: transparent; }
-        .tab.active {
-            color: var(--ui-accent);
-            border-bottom-color: var(--ui-accent);
-            background: transparent;
-            box-shadow: none;
             font-weight: 600;
+            line-height: 1.2;
+            text-align: center;
+            transition: color .16s ease, background .16s ease, box-shadow .16s ease;
         }
-        .tabs-right { justify-self: end; align-self: center; padding-right: 0; }
+        .tab:hover {
+            color: var(--ui-text);
+            background: rgba(255, 255, 255, 0.62);
+        }
+        .tab.active {
+            color: var(--ui-accent-hover);
+            border-bottom-color: transparent;
+            background: var(--ui-accent-fill);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65);
+        }
+        .tabs-right { padding-right: 0; }
         .restart-btn {
-            min-height: 34px;
-            padding: 6px 11px;
-            border: 1px solid #ead8b7;
-            border-radius: 8px;
-            background: #fbf3e4;
-            color: #8b510b;
-            font-size: 13px;
-            font-weight: 450;
-            line-height: 1.4;
-            transition: color .16s ease, background .16s ease;
+            min-height: 42px;
+            padding: 9px 16px;
+            border: 1px solid var(--ui-violet-line);
+            border-radius: var(--ui-radius-control);
+            background: var(--ui-violet-soft);
+            color: var(--ui-violet);
+            font-weight: 650;
+            transition: background .16s ease, border-color .16s ease;
         }
-        .restart-btn:hover { color: #75430a; border-color: #d5b67f; background: #f5e8cc; }
+        .restart-btn:hover { color: #fff; border-color: var(--ui-violet); background: var(--ui-violet); }
 
         /* 页面容器与标题 */
         .panel {
@@ -3580,10 +3564,11 @@
             .external-detail-wrap { grid-template-columns: 1fr 250px; }
         }
         @media (max-width: 900px) {
-            body { padding: 0 18px 18px; }
+            body { padding: 18px; }
+            .header-shell { --header-inset: 18px; }
             .panel { padding: 22px; }
             .tabs { gap: 10px; }
-            .tab { padding-inline: 2px; }
+            .tab { padding-inline: 13px; }
             .my-playlist-container { gap: 6px 14px; }
             .my-playlist-left, .my-playlist-right { width: 190px; }
             .system-config-grid { grid-template-columns: 1fr; }
@@ -3591,31 +3576,25 @@
             .external-usage-side { display: block; max-height: none; }
         }
         @media (max-width: 768px) {
-            body { padding: 0 14px 14px; }
-            .header-shell { margin-bottom: 16px; }
-            .header { padding: 0; border-radius: 0; }
+            body { padding: 14px; }
+            .header-shell { --header-inset: 14px; margin-bottom: 16px; }
+            .header { padding: 10px; border-radius: 16px; }
             .tabs {
-                display: flex;
                 flex-direction: row;
                 flex-wrap: wrap;
                 align-items: center;
-                gap: 0;
+                gap: 9px;
                 overflow: visible;
             }
-            .brand { min-height: 60px; }
-            .brand-mark { width: 28px; height: 28px; border-radius: 6px; }
-            .brand-name { font-size: 19px; }
+            .brand-mark { width: 40px; height: 40px; }
             .tabs-right { width: auto; margin-left: auto; }
-            .restart-btn { width: auto; min-height: 34px; padding: 6px 10px; }
+            .restart-btn { width: auto; min-height: 38px; padding: 8px 12px; }
             .tabs-left {
                 order: 3;
                 flex: 1 0 100%;
                 width: 100%;
                 max-width: 100%;
-                min-height: 44px;
-                margin-left: 0;
-                justify-content: space-between;
-                gap: 20px;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
                 overflow: visible;
             }
             .tabs-left::-webkit-scrollbar { display: none; }
@@ -3651,9 +3630,13 @@
         @media (max-width: 560px) {
             .about-community-grid { padding-left: 0; }
             .panel { padding: 15px; }
-            .brand { padding-inline: 0; }
-            .tabs-left { gap: 12px; }
-            .tab { width: auto; padding-inline: 0; text-align: center; }
+            .brand { padding-inline: 5px; }
+            .tabs-left {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                overflow: visible;
+            }
+            .tab { width: 100%; padding-inline: 8px; text-align: center; }
             .my-playlist-header-row { flex-direction: column; }
             .my-playlist-actions { width: 100%; justify-content: space-between; }
             .subscribe-bar { align-items: stretch; }
@@ -3706,6 +3689,11 @@
                 backdrop-filter: blur(16px);
             }
         }
+        .tabs-left {
+            border-color: rgba(255, 255, 255, .7);
+            background: rgba(229, 237, 226, .62);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
+        }
         .btn-primary, .confirm-btn-confirm, .mode-switch-btn.active {
             border-color: var(--ui-accent-fill-line);
             background: var(--ui-accent-fill);
@@ -3716,6 +3704,8 @@
         .mode-switch-btn.active:hover { border-color: var(--ui-accent-fill-line); background: var(--ui-accent-fill-hover); color: var(--ui-accent-hover); }
         .btn:focus-visible, .confirm-btn:focus-visible, .tab:focus-visible,
         .mode-switch-btn:focus-visible { box-shadow: var(--ui-ring); }
+        .restart-btn { background: var(--ui-surface); color: var(--ui-text-secondary); border-color: var(--ui-line-strong); }
+        .restart-btn:hover { color: var(--ui-accent); border-color: var(--ui-accent-line); background: var(--ui-accent-soft); }
         .subscribe-bar { background: transparent; }
         .subscribe-bar code { color: var(--ui-text-secondary); }
         code { color: var(--ui-text-secondary); }
@@ -4291,8 +4281,7 @@
             <div class="header">
                 <div class="tabs">
                     <a class="brand" href="https://ifansclub.com/" target="_blank" rel="noopener noreferrer" aria-label="iFansClub 官网（在新标签页打开）" title="访问 iFansClub 官网（新标签页）">
-                        <img class="brand-mark" src="favicon.svg?v=1" width="32" height="32" alt="" aria-hidden="true">
-                        <span class="brand-name">iPTV</span>
+                        <img class="brand-mark" src="favicon.svg?v=1" width="44" height="44" alt="" aria-hidden="true">
                     </a>
                     <div class="tabs-left">
                         <button class="tab active" onclick="switchTab(0)">我的频道</button>
