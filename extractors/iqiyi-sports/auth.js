@@ -4,18 +4,39 @@ import { dataPath } from '../../utils/paths.js'
 import { parseCookies } from './cookies.js'
 import { selectAuthorizedMedia } from './api.js'
 
-export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/chrome-profile'), launchImpl = launchBrowser, closeImpl = closeBrowser } = {}) {
-  let browser, launching, visible = false, busy = false, pages = 0, loginPage, revision = 0
+// Checks come in bursts on the five-minute refresh; between them an idle Chromium only holds
+// memory and one of the shared browser slots (#182). The profile on disk keeps the login.
+const IDLE_CLOSE_MS = 5 * 60 * 1000
+
+export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/chrome-profile'), launchImpl = launchBrowser, closeImpl = closeBrowser, idleCloseMs = IDLE_CLOSE_MS } = {}) {
+  let browser, launching, closing, visible = false, busy = false, pages = 0, loginPage, revision = 0, idleTimer
   let state = { status: 'idle', authenticated: false, message: '请关联本人爱奇艺账号，并检查赛事观看权限' }
   const available = process.platform !== 'linux' || !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
   const snapshot = () => ({ ...state, active: busy, running: !!browser?.connected, visible,
     available, reason: available ? '' : '当前服务没有桌面环境，请从本人浏览器复制 Cookie 导入',
     account: state.authenticated ? { nickname: '本人爱奇艺账号', type: state.entitled === false ? '账号有效，当前内容需额外权益' : '当前赛事授权', vip: state.entitled === true ? true : null } : null })
-  async function close() {
-    if (browser) await closeImpl(browser, { label: '爱奇艺体育' })
-    browser = undefined; loginPage = undefined; visible = false
+  const idle = () => !busy && !pages && !launching && !visible && !(loginPage && !loginPage.isClosed())
+  function armIdleClose() {
+    clearTimeout(idleTimer)
+    if (!browser || !idle()) return
+    idleTimer = setTimeout(() => { if (idle()) close().catch(() => {}) }, idleCloseMs)
+    idleTimer.unref?.()
+  }
+  // Closing takes seconds; ensure() waits for it, and a slow close never clears a newer browser.
+  function close() {
+    clearTimeout(idleTimer)
+    if (closing) return closing
+    const current = browser
+    if (!current) { loginPage = undefined; visible = false; return Promise.resolve() }
+    closing = (async () => {
+      try { await closeImpl(current, { label: '爱奇艺体育' }) }
+      finally { if (browser === current) { browser = undefined; loginPage = undefined; visible = false }; closing = undefined }
+    })()
+    return closing
   }
   async function ensure(headful = false) {
+    clearTimeout(idleTimer)
+    if (closing) await closing.catch(() => {})
     if (browser?.connected && visible === headful) return browser
     if (launching) return launching
     launching = (async () => {
@@ -64,7 +85,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
   async function capture(event) {
     if (busy || state.status === 'waiting') throw new Error('爱奇艺正在处理登录操作，请完成或关闭登录窗口后再播放')
     pages++
-    try { return await captureContext((await ensure()).defaultBrowserContext(), event) } finally { pages-- }
+    try { return await captureContext((await ensure()).defaultBrowserContext(), event) } finally { pages--; armIdleClose() }
   }
   async function captureAnonymous(event) {
     if (busy || state.status === 'waiting') throw new Error('爱奇艺正在处理登录操作，请稍后核验')
@@ -73,7 +94,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     try {
       context = await (await ensure()).createBrowserContext()
       return { ...await captureContext(context, event), hasLogin: false }
-    } finally { await context?.close().catch(() => {}); pages-- }
+    } finally { await context?.close().catch(() => {}); pages--; armIdleClose() }
   }
   async function verifyAccount(context) {
     const page = await context.newPage()
@@ -95,7 +116,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
   async function checkAccount() {
     if (busy || state.status === 'waiting') throw new Error('爱奇艺正在处理登录操作，请稍后核验')
     pages++
-    try { await verifyAccount((await ensure()).defaultBrowserContext()) } finally { pages-- }
+    try { await verifyAccount((await ensure()).defaultBrowserContext()) } finally { pages--; armIdleClose() }
   }
   async function verify(context, event) {
     // A replay card may be marked paid while its video is publicly playable.
@@ -127,7 +148,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
         await new Promise(resolve => setTimeout(resolve, 50))
       }
       return await fn()
-    } finally { busy = false }
+    } finally { busy = false; armIdleClose() }
   }
   async function finishLoginWindow() {
     // Headful is only for the owner's login interaction. Reopen the same persisted

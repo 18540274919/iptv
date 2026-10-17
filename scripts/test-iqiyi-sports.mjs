@@ -4,6 +4,7 @@ import { createCatalog, CONFIG_URL, normalizeEvents, normalizeVods, eventName, e
 import { parseCookies } from '../extractors/iqiyi-sports/cookies.js'
 import { createBrowserAuth } from '../extractors/iqiyi-sports/auth.js'
 import { createRuntime } from '../extractors/iqiyi-sports/runtime.js'
+import { TTL, STALE_GRACE_MS, BREAKER } from '../extractors/iqiyi-sports/eligibility.js'
 import module from '../extractors/iqiyi-sports/index.js'
 import { getModule, resolverFor } from '../extractors/registry.js'
 
@@ -323,7 +324,7 @@ test('eligibility hides previews and network-unknown entries, caches checks and 
   assert.deepEqual(result.items.map(i => i.id), ['allowed'])
   assert.equal(result.skipped.length, 1); assert.equal(result.unknown, 1)
   await filter.filter(items, { waitMs: 100 }); assert.equal(calls, 3)
-  clock += 60001
+  clock += TTL.unknown + 1
   await filter.filter(items, { waitMs: 100 }); assert.equal(calls, 4, '网络检查失败只短期缓存，不永久当作无权')
   changed = true; filter.reset()
   result = await filter.filter(items, { waitMs: 100 })
@@ -353,7 +354,7 @@ test('a transient failed recheck never republishes an expired positive result', 
   const filter = createEligibility({ now: () => clock, probe: async () => { if (fail) throw new Error('timeout'); return { status: 'allowed' } } })
   const item = { id: 'live-1' }
   assert.equal((await filter.filter([item], { waitMs: 100 })).items.length, 1)
-  clock += 120001; fail = true
+  clock += TTL.live + 1; fail = true
   const result = await filter.filter([item], { waitMs: 100 })
   assert.equal(result.items.length, 0); assert.equal(result.unknown, 1)
   await filter.shutdown()
@@ -495,7 +496,7 @@ test('playback keeps the probed viewing label after the short live record expire
   const filter = createEligibility({ now: () => clock, delay: async () => {}, probe: async () => ({ status: 'allowed', accessLabel: '免费免登录' }) })
   const item = { id: 'live-free' }
   assert.equal((await filter.filter([item], { waitMs: 100 })).items[0].accessLabel, '免费免登录')
-  clock += 180000
+  clock += TTL.live + 60000
   filter.record(item, 'allowed')
   assert.equal((await filter.filter([item], { waitMs: 100 })).items[0].accessLabel, '免费免登录', '观看中的免费赛事不能改名为「权益已授权」')
   filter.record(item, 'unknown', '官方节目清单超时'); filter.record(item, 'allowed')
@@ -516,7 +517,7 @@ test('an expired positive result stays listed only while its recheck runs, then 
   const filter = createEligibility({ now: () => clock, delay: async () => {}, probe })
   const item = { id: 'live-1' }
   assert.equal((await filter.filter([item], { waitMs: 100 })).items.length, 1)
-  clock += 300000; hold(); verdict = 'denied'
+  clock += TTL.live + 60000; hold(); verdict = 'denied'
   let result = await filter.filter([item], { waitMs: 10 })
   assert.deepEqual(result.items.map(i => i.accessLabel), ['会员'], '五分钟刷新时官网页面慢，不能把在播直播从列表拿掉')
   assert.equal(result.unknown, 0); assert.equal(result.warnings.length, 0)
@@ -528,7 +529,7 @@ test('an expired positive result stays listed only while its recheck runs, then 
   verdict = 'allowed'
   const stuck = createEligibility({ now: () => clock, delay: async () => {}, probe })
   assert.equal((await stuck.filter([item], { waitMs: 100 })).items.length, 1)
-  clock += 120000 + 10 * 60 * 1000 + 1; hold()
+  clock += TTL.live + STALE_GRACE_MS + 1; hold()
   result = await stuck.filter([item], { waitMs: 10 })
   assert.equal(result.items.length, 0, '复核卡住超过宽限期不再沿用旧结论'); assert.equal(result.unknown, 1)
   gate.resolve(); gate = undefined
@@ -635,5 +636,115 @@ test('the account helper reads the saved profile, treats only official P00100 as
   await auth.flow.start()
   await assert.rejects(auth.checkAccount(), /登录操作/)
   assert.equal(evaluations, 3)
+  await auth.shutdown()
+})
+
+// Issue #182: every probe opens an official player page in Chromium. v4.37.0 re-ran the module after
+// each batch and re-probed live rooms every two minutes (≈230 page loads and ≈115 playlist rebuilds an
+// hour in this simulation, two pages at once). Background checks must settle into a light cadence.
+test('background checks settle: one page at a time, few probes per hour, no rebuilds without a change', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let clock = 0, probes = 0, inflight = 0, maxInflight = 0, updates = 0, reentries = 0
+  const perHour = []
+  const items = [
+    ...Array.from({ length: 3 }, (_, i) => ({ id: `live-${i}`, verdict: i === 0 ? 'denied' : 'allowed' })),
+    ...Array.from({ length: 30 }, (_, i) => ({ id: `vod-${i}`, kind: i % 2 ? 'replay' : 'highlight', verdict: i < 2 ? 'unknown' : i % 4 === 0 ? 'denied' : 'allowed' })),
+  ]
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const el = createEligibility({ now: () => clock, delay: async ms => { clock += ms; await tick() },
+    onUpdate: async () => { updates++; reentries++; try { await el.filter(items, { waitMs: 0 }) } finally { reentries-- } },
+    probe: async item => {
+      probes++; perHour[Math.floor(clock / 3600000)] = (perHour[Math.floor(clock / 3600000)] || 0) + 1
+      inflight++; maxInflight = Math.max(maxInflight, inflight)
+      await tick(); clock += item.verdict === 'unknown' ? 35000 : 12000; inflight--
+      if (item.verdict === 'unknown') throw new Error('官方页面超时')
+      return item.verdict === 'allowed' ? { status: 'allowed', accessLabel: '会员' } : { status: 'denied', reason: '缺少权益' }
+    } })
+  let nextTick = 0, idle = 0
+  while (clock < 3 * 3600000) {
+    if (clock >= nextTick || (!inflight && !reentries && idle > 50)) {
+      clock = Math.max(clock, nextTick); nextTick = clock + 5 * 60000; idle = 0
+      await el.filter(items, { waitMs: 0 })
+    }
+    await tick(); idle = !inflight && !reentries ? idle + 1 : 0
+  }
+  await el.shutdown()
+  assert.equal(maxInflight, 1, '同一时间只开一个官方页面')
+  assert.ok(perHour[0] <= 70, `首轮全量核验 ${perHour[0]} 次`)
+  assert.ok(perHour[1] <= 40 && perHour[2] <= 40, `稳态每小时 ${perHour[1]}/${perHour[2]} 次官方页面`)
+  assert.ok(updates <= 15, `三小时内只在列表变化时重跑模块（实际 ${updates} 次）`)
+})
+
+test('a run of official-page timeouts pauses background checks instead of keeping a renderer busy for an empty list', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let clock = 0, probes = 0
+  const filter = createEligibility({ now: () => clock, delay: async () => {}, probe: async () => { probes++; throw new Error('官方页面超时') } })
+  const items = Array.from({ length: 6 }, (_, i) => ({ id: `vod-${i}`, kind: 'replay' }))
+  let result = await filter.filter(items, { waitMs: 100 })
+  assert.equal(probes, BREAKER.misses, '连续超时后停手'); assert.equal(result.items.length, 0)
+  assert.match(result.warnings[0], /暂停约 30 分钟/)
+  clock += BREAKER.pauseMs - 1
+  await filter.filter(items, { waitMs: 100 }); assert.equal(probes, BREAKER.misses, '暂停期间不再开官方页面')
+  clock += 2
+  result = await filter.filter(items, { waitMs: 100 })
+  assert.equal(probes, BREAKER.misses * 2, '暂停结束后再试一轮'); assert.match(result.warnings[0], /暂停/)
+  filter.reset()
+  await filter.filter(items, { waitMs: 100 }); assert.equal(probes, BREAKER.misses * 3, '重新登录或检查后立即重新核验')
+  await filter.shutdown()
+})
+
+test('a free item whose anonymous page times out is not loaded a second time in the owner profile', async () => {
+  const base = normalizeVods(catalogBody([endedCard]))[0]
+  const item = { ...base, id: 'vod-free-timeout', free: true }
+  let ownerCalls = 0
+  const auth = { revision: () => 0, flow: { status: () => ({}) }, shutdown: async () => {},
+    captureAnonymous: async () => { throw new Error('爱奇艺官方播放授权检查超时') },
+    capture: async () => { ownerCalls++; return { ...vodCapture(item), hasLogin: true } } }
+  const runtime = createRuntime({ auth, catalog: { discover: async () => ({ events: [], vods: [item] }) } })
+  const result = await runtime.filterPlayable([item])
+  assert.equal(ownerCalls, 0, '超时不是无权，换账号再开一次只会再超时一次')
+  assert.equal(result.items.length, 0); assert.equal(result.unknown, 1)
+  await runtime.shutdown()
+})
+
+test('a requested re-run that never reaches the filter (module switched off) is not requested again every minute', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let clock = 0, updates = 0, gate
+  const items = Array.from({ length: 6 }, (_, i) => ({ id: `live-${i}` }))
+  const filter = createEligibility({ now: () => clock, delay: async ms => { clock += ms },
+    onUpdate: () => { updates++ },
+    probe: async () => { await gate; clock += 70000; return { status: 'allowed', accessLabel: '会员' } } })
+  let open; gate = new Promise(r => { open = r })
+  await filter.filter(items, { waitMs: 0 })      // the owner switches the module off here: no filter() follows
+  open(); await new Promise(r => setTimeout(r, 20))
+  assert.equal(updates, 1, '六条陆续核验完，只请求一次重跑')
+  await filter.filter(items, { waitMs: 0 })      // the next scheduled refresh publishes everything
+  clock += TTL.live + 60000
+  gate = Promise.resolve()
+  await filter.filter(items, { waitMs: 100 })
+  assert.equal(updates, 1, '复核结论没变，不再请求重跑')
+  await filter.shutdown()
+})
+
+test('the idle browser closes after the last page, and a capture during the close waits for it instead of using a closing browser', async () => {
+  let launches = 0, closed = 0
+  const makePage = () => {
+    let listener
+    return { on: (_name, fn) => { listener = fn }, isClosed: () => false, close: async () => {},
+      cookies: async () => [{ name: 'P00001', value: 'fixture' }],
+      goto: async () => listener({ url: () => 'https://live.video.iqiyi.com/live', text: async () => JSON.stringify({ data: authorized() }) }) }
+  }
+  const auth = createBrowserAuth({ profile: '/tmp/iptv-iqiyi-auth-fixture', idleCloseMs: 20,
+    launchImpl: async () => { launches++; return { connected: true, on: () => {}, defaultBrowserContext: () => ({ newPage: async () => makePage() }) } },
+    closeImpl: async browser => { await new Promise(r => setTimeout(r, 40)); browser.connected = false; closed++ } })
+  await auth.capture(event)
+  assert.equal(launches, 1)
+  await new Promise(r => setTimeout(r, 30))     // idle timer fired; the close is still running
+  const captured = await auth.capture(event)
+  assert.ok(captured.data, '关闭途中来的取票等关完再开新浏览器')
+  assert.equal(closed, 1); assert.equal(launches, 2)
+  assert.equal(auth.flow.status().running, true, '慢的关闭不会冲掉新开的浏览器')
+  await new Promise(r => setTimeout(r, 90))
+  assert.equal(closed, 2); assert.equal(auth.flow.status().running, false)
   await auth.shutdown()
 })

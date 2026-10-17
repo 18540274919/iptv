@@ -25,7 +25,11 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
             if (!event.kind && captured.data.id && String(captured.data.id) !== event.qipuId) throw new Error('官方播放房间与目录不一致')
             await manifest({ ...result, referer: event.officialPage })
             return { status: 'allowed', accessLabel: accessLabel(event, true) }
-          } catch { /* Anonymous failure does not revoke the owner's paid access. */ }
+          } catch (error) {
+            // Anonymous refusal does not revoke the owner's paid access, so retry with the
+            // account; a timeout or broken page would only cost a second full page (#182).
+            if (!error.credential) throw error
+          }
         }
         const captured = await auth.capture(event)
         const result = selectAuthorizedMedia(captured, event)
@@ -38,9 +42,9 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
       }
     },
   })
-  const clear = () => { tickets.clear(); eligibility.reset() }
+  const clear = ({ requeue = false } = {}) => { tickets.clear(); eligibility.reset({ requeue }) }
   function syncRevision() {
-    if (auth.revision() !== revision) { clear(); revision = auth.revision(); rejected = ''; accountCheckedAt = -Infinity }
+    if (auth.revision() !== revision) { clear({ requeue: true }); revision = auth.revision(); rejected = ''; accountCheckedAt = -Infinity }
   }
   // A valid account without this room's rights gets the same preview as an expired login.
   // The refused item is hidden at once; the login alert waits for the official account API,
