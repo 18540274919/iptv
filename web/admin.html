@@ -5188,7 +5188,7 @@
                     <p style="font-size:13px;color:#888;line-height:1.7;margin:10px 0;">浏览首页推荐、最热、最新与继续观看，支持选集、本机进度与弹幕。影视使用按需生成的专用清单，不作为固定电视频道收录。</p>
                     <a class="btn btn-sm btn-primary" href="${escapeHtml(API_PREFIX)}/iqiyi-vod/" target="_blank" rel="noopener">打开影视浏览页</a>
                     <a class="btn btn-sm" href="${escapeHtml(API_PREFIX)}/iqiyi-vod/playlist.m3u" target="_blank" rel="noopener">播放器 M3U</a>
-                    <p style="font-size:12px;color:#888;line-height:1.7;margin-top:10px;">登录与 Cookie 导入在影视页管理；只发布完整观看权限已确认的内容。试看、无权限和核验失败均不供流。</p>
+                    <p style="font-size:12px;color:#888;line-height:1.7;margin-top:10px;">登录与 Cookie 导入在影视页管理；只发布完整观看权限已确认的内容。试看、无权限和核验失败均不供流。影视只有管理员地址能用（播放用的是你本人的会员），用户令牌无法访问；没设访问密码时任何能连上端口的人都能用，建议先设访问密码。</p>
                 </div>`;
             }
             if (key === 'iqiyi-sports-login') {
@@ -5335,6 +5335,9 @@
         function extractorChannelsHtml(m) {
             const groups = m.channelGroups || [];
             const total = groups.reduce((sum, group) => sum + group.channels.length, 0);
+            if (!total && m.id === 'iqiyi-vod') {
+                return '<div class="extractor-channels"><div class="extractor-channels-empty">影视不进固定频道列表：在「影视浏览页」观看，或用其中的专用 M3U 订阅。</div></div>';
+            }
             if (!total) {
                 const status = (m.health || {}).status;
                 // 抓过却没拿到（缺账号/Token、被拒）别说「启用就能看到」——原因看上面那行状态

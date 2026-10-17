@@ -1047,8 +1047,8 @@ async function handleRequest(req, res) {
     return
   }
 
-  // Authenticated VOD application. Owner history/account operations are admin-only;
-  // subscribers may request already associated playback/danmaku paths with their token.
+  // Authenticated VOD application, admin only: playback uses the owner's membership, so
+  // user tokens get 403 on every route.
   if (await handleVODRequest(req, res, {
     routePath, origin: originOf(req), accessPrefix, admin: passAuthed,
     enabled: getExtractorManager().isModuleEnabled({ id: 'iqiyi-vod' }),

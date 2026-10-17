@@ -37,13 +37,13 @@ test('mounted page/assets, manifest, M3U and danmaku retain the authenticated pr
 }))
 test('expired denied rights revoke the old manifest, direct fragments, playlist and comments',async()=>fixture(async({origin,app,deny,time})=>{
  const manifest=await(await fetch(origin+'/play/movie.m3u8')).text(), media=manifest.split('\n').find(line=>line.startsWith('/secret/')).replace('/secret/iqiyi-vod','')
- deny();time(400000)
+ deny();time(1800001)   // tickets now last up to 30 minutes unless the CDN refuses them first
  for(const route of ['/play/movie.m3u8',media,'/api/danmaku/v1/videos/movie'])assert.equal((await fetch(origin+route)).status,403)
  assert.equal((await fetch(origin+'/playlist/samples.m3u?id=movie')).status,503)
  assert.equal(app.runtime.status().find(s=>s.id==='movie').state,'denied')
 }))
 test('subscriber tokens cannot read owner history or change login; cross-origin writes are rejected',async()=>fixture(async({origin})=>{
- for(const route of ['/','/api/history','/api/account','/api/home'])assert.equal((await fetch(origin+route,{headers:{'x-subscriber':'yes'}})).status,403)
+ for(const route of ['/','/api/history','/api/account','/api/home','/play/movie.m3u8','/api/danmaku/v1/videos/movie','/playlist.m3u'])assert.equal((await fetch(origin+route,{headers:{'x-subscriber':'yes'}})).status,403,route+' 订阅用户不能用站长会员播放')
  const cross=await fetch(origin+'/api/account',{method:'POST',headers:{Origin:'https://foreign.example','Content-Type':'application/json'},body:'{"action":"check"}'})
  assert.equal(cross.status,403)
 }))

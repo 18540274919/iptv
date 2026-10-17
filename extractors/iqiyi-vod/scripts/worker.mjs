@@ -1,14 +1,15 @@
 import { browserJob } from '../jobs.js'
 import { cloneProfile } from '../profile.js'
 import { runtimeDir } from '../paths.js'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseManifest } from './runtime.mjs'
-const exec=promisify(execFile), root=fileURLToPath(new URL('../',import.meta.url))
-export async function resolveOfficial(sample,{signal}={}) {
+import { decodeCheck } from './decode-check.mjs'
+const root=fileURLToPath(new URL('../',import.meta.url))
+// renewal: the same title already passed the decode check; a renewal only needs fresh
+// official signatures, so skip the two ffmpeg decodes (#182-style CPU on NAS boxes).
+export async function resolveOfficial(sample,{signal,renewal=false}={}) {
   const jobs=path.join(runtimeDir,'jobs')
   await mkdir(jobs,{recursive:true,mode:0o700})
   const out=await mkdtemp(path.join(jobs,sample.id+'-'))
@@ -28,9 +29,10 @@ export async function resolveOfficial(sample,{signal}={}) {
     await browserJob(path.join(root,'scripts/probe.mjs'),{cwd:root,env,signal,timeout:150000,maxBuffer:1024*1024})
     const report=JSON.parse(await readFile(path.join(out,sample.id+'.json'),'utf8'))
     const options=report.dash.flatMap(d=>d.videos||[])
-    const candidate=options.find(v=>v.hasInlineHls && v.endList && Math.abs(v.duration-sample.expectedSeconds)<=10
+    const candidate=options.filter(v=>v.hasInlineHls && v.endList && Math.abs(v.duration-sample.expectedSeconds)<=10
       && v.schedulerFiles>0 && v.resolvedFiles===v.schedulerFiles && !v.keyMethods.some(m=>m!=='NONE')
-      && Number(v.isPreview||0)!==1 && Number(v.ptt||0)===0 && [undefined,null,0,1].includes(v.drmType))
+      && Number(v.isPreview||0)!==1 && Number(v.ptt||0)===0 && [undefined,null,0,1].includes(v.drmType) && [undefined,null,2].includes(v.codec))
+      .sort((a,b)=>Number(b.bid||0)-Number(a.bid||0))[0]
     if(!candidate || report.error) {
       const preview=options.some(v=>v.duration>0 && v.duration<sample.expectedSeconds-10) || /试看[\s\S]{0,40}后结束|观看完整视频请/.test(report.pageText||'')
       throw Object.assign(new Error(preview?'官方仅返回试看或没有完整观看权益，请更新独立登录副本':'官方完整播放解析未完成，请稍后重试'),{code:preview?'NOT_AUTHORIZED':'UNAVAILABLE'})
@@ -40,10 +42,13 @@ export async function resolveOfficial(sample,{signal}={}) {
     const parsed=parseManifest(await readFile(manifestPath,'utf8'),sample.expectedSeconds)
     const text=parsed.lines.map(line=>line.segment!==undefined?parsed.segments[line.segment].url:line.text).join('\n')
     await writeFile(manifestPath,text,{mode:0o600})
-    await exec('python3',[path.join(root,'scripts/verify.py')],{cwd:root,env,signal,timeout:100000,maxBuffer:1024*1024})
-    const verified=JSON.parse(await readFile(path.join(out,'verification.json'),'utf8'))[0]
-    if(!verified?.completeClearHlsVerified)throw new Error('官方媒体开头或后段解码未通过，未发布新清单')
-    return {text,seconds:candidate.duration,danmaku:report.videoId?{videoId:report.videoId}:null,officialPage:sample.url,checks:verified.checks}
+    // Skip the decode only when the renewal still serves the stream that was decoded before.
+    const verified=renewal&&renewal.bid===candidate.bid?{verified:true,skipped:true,checks:[]}:await decodeCheck(manifestPath,candidate.duration,{signal})
+    if(!verified.verified){
+      await writeFile(path.join(runtimeDir,'decode-last-'+sample.id+'.json'),JSON.stringify({at:new Date().toISOString(),seconds:candidate.duration,checks:verified.checks}),{mode:0o600}).catch(()=>{})
+      throw new Error('官方媒体开头或后段解码未通过，未发布新清单')
+    }
+    return {text,seconds:candidate.duration,bid:candidate.bid,danmaku:report.videoId?{videoId:report.videoId}:null,officialPage:sample.url,checks:verified.checks}
   } catch(error) {
     // Keep only diagnostic metadata; signed manifests and account data stay in
     // the disposable job and never appear in API responses or event logs.

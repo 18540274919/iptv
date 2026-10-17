@@ -1,4 +1,5 @@
 import { launchWithFallback } from '../../../utils/browserLauncher.js'
+import { copyCookies } from '../profile.js'
 import { runtimeDir } from '../paths.js'
 // Read-only investigation of the owner's explicitly authorized isolated login.
 // No player, history writes, deletion, original profile, or main app access.
@@ -19,14 +20,7 @@ const outputPath=process.env.IQIYI_HISTORY_OUTPUT?path.resolve(process.env.IQIYI
 if(outputPath&&!outputPath.startsWith(path.join(runtimeDir,'jobs')+path.sep))throw Error('History output must remain in a private job')
 const profile=await mkdtemp(path.join(outputPath?path.dirname(outputPath):work,'profile-'))
 for(const name of ['Local State','Default/Preferences','Default/Secure Preferences'])try{await mkdir(path.dirname(path.join(profile,name)),{recursive:true});await copyFile(path.join(source,name),path.join(profile,name))}catch(e){if(e.code!=='ENOENT')throw e}
-await exec('python3',['-c',`import pathlib,sqlite3,sys
-src=pathlib.Path(sys.argv[1]);dest=pathlib.Path(sys.argv[2])
-for name in ['Default/Cookies','Default/Network/Cookies']:
- p=src/name
- if p.exists():
-  q=dest/name;q.parent.mkdir(parents=True,exist_ok=True)
-  with sqlite3.connect(p.as_uri()+'?mode=ro',uri=True) as a,sqlite3.connect(q) as b:a.backup(b)
-`,source,profile])
+await copyCookies(source,profile)
 let browser;const history=[],tasks=new Set(),network=[],blocked={media:0,writes:0,other:0}
 try{
  browser=await launchWithFallback({launchImpl:opts=>puppeteer.launch(opts),launchOptions:{headless:true,userDataDir:profile,args:['--mute-audio','--no-first-run']}})

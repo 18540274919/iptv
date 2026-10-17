@@ -8,7 +8,7 @@ import { selectAuthorizedMedia } from './api.js'
 // memory and one of the shared browser slots (#182). The profile on disk keeps the login.
 const IDLE_CLOSE_MS = 5 * 60 * 1000
 
-export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/chrome-profile'), launchImpl = launchBrowser, closeImpl = closeBrowser, idleCloseMs = IDLE_CLOSE_MS, accountOnly = false } = {}) {
+export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/chrome-profile'), launchImpl = launchBrowser, closeImpl = closeBrowser, idleCloseMs = IDLE_CLOSE_MS, accountOnly = false, label = '爱奇艺体育' } = {}) {
   let browser, launching, closing, visible = false, busy = false, pages = 0, loginPage, revision = 0, idleTimer
   let state = { status: 'idle', authenticated: false, message: '请关联本人爱奇艺账号，并检查赛事观看权限' }
   const available = process.platform !== 'linux' || !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
@@ -29,7 +29,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     const current = browser
     if (!current) { loginPage = undefined; visible = false; return Promise.resolve() }
     closing = (async () => {
-      try { await closeImpl(current, { label: '爱奇艺体育' }) }
+      try { await closeImpl(current, { label }) }
       finally { if (browser === current) { browser = undefined; loginPage = undefined; visible = false }; closing = undefined }
     })()
     return closing
@@ -42,7 +42,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     launching = (async () => {
       if (browser?.connected) await close()
       await mkdir(profile, { recursive: true, mode: 0o700 })
-      browser = await launchImpl({ label: '爱奇艺体育', headless: !headful,
+      browser = await launchImpl({ label, headless: !headful,
         launchOptions: { userDataDir: profile, defaultViewport: headful ? null : { width: 1440, height: 1000 }, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false, args: headful ? ['--window-size=1440,1000'] : [] },
         onIdleRequest: async () => { if (busy || pages || loginPage && !loginPage.isClosed()) return false; await close(); return true },
       })

@@ -4,7 +4,7 @@ import { createVODAuth } from '../auth.js'
 import {createUnifiedDanmaku} from './unified-danmaku.mjs'
 import { authorizedPlaylist } from './playlist.mjs'
 import { createCollectionExport } from './collection-export.mjs'
-import { readFile, mkdir, appendFile } from 'node:fs/promises'
+import { readFile, mkdir, appendFile, stat, rename } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { Readable } from 'node:stream'
@@ -21,7 +21,28 @@ export async function createVODService({resolve = resolveOfficial, catalog: supp
 await mkdir(runtimeDir,{recursive:true,mode:0o700})
 await restoreSamples()
 const auth = suppliedAuth || createVODAuth()
-const runtime=createRuntime({...runtimeOptions,resolve,auto,ttlMs:Number(process.env.LINK_TTL_MS||300000),refreshAheadMs:Number(process.env.LINK_REFRESH_AHEAD_MS||90000),onEvent:event=>appendFile(path.join(runtimeDir,'renewals.ndjson'),JSON.stringify(event)+'\n',{mode:0o600})})
+// Login problems reach the alert center only once the official account API confirms them:
+// a preview also happens to a valid account that lacks this title's rights.
+let rejected='',accountCheckedAt=-Infinity,accountCheck
+function confirmLoginSoon(){
+ if(!auth.checkAccount||accountCheck||Date.now()-accountCheckedAt<600000)return
+ accountCheckedAt=Date.now()
+ accountCheck=auth.checkAccount().then(()=>{rejected=''},error=>{if(error.credential)rejected=error.message}).finally(()=>{accountCheck=undefined})
+}
+const trackedResolve=async(sample,options)=>{
+ try{return await resolve(sample,options)}
+ catch(error){if(error.code==='NOT_AUTHORIZED')confirmLoginSoon();throw error}
+}
+const eventsFile=path.join(runtimeDir,'renewals.ndjson')
+async function logEvent(event){
+ // Diagnostics only: keep the newest ~512 KiB plus one rotated file.
+ try{if((await stat(eventsFile)).size>524288)await rename(eventsFile,eventsFile+'.1')}catch{}
+ await appendFile(eventsFile,JSON.stringify(event)+'\n',{mode:0o600})
+}
+const runtime=createRuntime({...runtimeOptions,resolve:trackedResolve,auto,
+ ...(process.env.IQIYI_VOD_TICKET_MAX_MS?{ttlMs:Number(process.env.IQIYI_VOD_TICKET_MAX_MS)}:{}),
+ ...(process.env.IQIYI_VOD_REFRESH_AHEAD_MS?{refreshAheadMs:Number(process.env.IQIYI_VOD_REFRESH_AHEAD_MS)}:{}),
+ onEvent:logEvent})
 const catalog=suppliedCatalog || createCatalog()
 const episodes=suppliedEpisodes || createEpisodes()
 const danmaku=suppliedDanmaku || createDanmaku()
@@ -68,9 +89,11 @@ async function handle(req,res,{path:requestPath, origin, prefix, admin = true}={
     const originalJSON=json
     const reply=(status,data)=>originalJSON(res,status,rebase(data,prefix))
     if(!['GET','HEAD','POST'].includes(req.method)){json(res,405,{error:'不支持此方法'});return}
-    const publicMedia=/^\/(?:play\/|media\/|api\/danmaku\/)/.test(url.pathname)
-    if(!admin&&!publicMedia){json(res,403,{error:'此爱奇艺影视操作仅管理员可用'});return}
-    if(req.method==='POST'&&req.headers.origin&&req.headers.origin!==origin){json(res,403,{error:'不允许跨站操作'});return}
+    // Playback uses the owner's membership, so user tokens get nothing here (owner's decision).
+    if(!admin){json(res,403,{error:'爱奇艺影视仅管理员可用'});return}
+    // Compare hosts only: behind an HTTPS reverse proxy without X-Forwarded-Proto the server
+    // sees http:// while the browser sends https:// in Origin.
+    if(req.method==='POST'&&req.headers.origin&&!sameHost(req.headers.origin,origin)){json(res,403,{error:'不允许跨站操作'});return}
     if(url.pathname==='/api/account'){
       if(req.method==='GET'){reply(200,auth.status());return}
       const input=await readBody(req,65536)
@@ -78,7 +101,7 @@ async function handle(req,res,{path:requestPath, origin, prefix, admin = true}={
       if(!actions[input.action]){reply(400,{error:'未知账号操作'});return}
       if(input.action==='start'&&!isLocal(req)){reply(403,{error:'仅服务所在电脑可打开官方登录窗口；NAS 请导入 Cookie'});return}
       await auth[actions[input.action]](input.action==='import'?input.cookies:undefined)
-      if(['check','import'].includes(input.action)){runtime.reset();history.invalidate?.();progress.reset?.();collectionExport.invalidate?.()}
+      if(['check','import'].includes(input.action)){if(auth.status().authenticated)rejected='';runtime.reset();history.invalidate?.();progress.reset?.();collectionExport.invalidate?.()}
       reply(200,auth.status());return
     }
     const bullets=url.pathname.match(/^\/api\/danmaku\/v1\/videos\/(movie|drama|(?:history|catalog)-[a-f0-9]{16})(\/segments)?$/)
@@ -189,7 +212,9 @@ update();setInterval(update,3000);
   }catch(error){if(res.headersSent){res.destroy();return}json(res,({BAD_REQUEST:400,AUTH_REQUIRED:401,NOT_AUTHORIZED:403,NOT_FOUND:404,SEGMENT_CHANGED:409,UNSUPPORTED:422})[error.code]||503,{code:error.code||'UNAVAILABLE',error:error.message?.replace(/https?:\/\/\S+/g,'[官方地址]')||'官方解析暂未完成'})}
 
 }
-return {handle,runtime,catalog,history,episodes,danmaku,auth,collectionExport,async close(){await Promise.allSettled([runtime.close(),collectionExport.close(),catalog.close(),episodes.close(),danmaku.close(),history.close(),progress.close(),auth.close()])}}
+return {handle,runtime,catalog,history,episodes,danmaku,auth,collectionExport,
+ credentialRejected:()=>rejected||(auth.status().status==='error'?auth.status().message:''),
+ async close(){await Promise.allSettled([runtime.close(),collectionExport.close(),catalog.close(),episodes.close(),danmaku.close(),history.close(),progress.close(),(auth.shutdown||auth.close)()])}}
 }
 
 function rebase(value,prefix){
@@ -202,4 +227,5 @@ function rebaseText(text,prefix){
    .replace(/^\/media\//gm,prefix+'/media/')
 }
 async function readBody(req,limit){let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>limit)throw Object.assign(Error('请求内容过大'),{code:'BAD_REQUEST'})}try{return JSON.parse(raw)}catch{throw Object.assign(Error('请求格式错误'),{code:'BAD_REQUEST'})}}
+function sameHost(a,b){try{return new URL(a).host===new URL(b).host}catch{return false}}
 function isLocal(req){return ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress)&&['127.0.0.1','localhost','[::1]'].includes(new URL('http://'+req.headers.host).hostname)&&!req.headers['x-forwarded-for']}

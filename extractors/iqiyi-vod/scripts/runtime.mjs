@@ -29,10 +29,18 @@ export function parseManifest(text,expectedSeconds){
   if(!segments.length || Math.abs(duration-expectedSeconds)>10)throw fail('此内容只获试看或未返回完整片长','NOT_AUTHORIZED')
   return {lines,segments,duration,origins:[...new Set(segments.map(s=>new URL(s.url).origin))],paths:new Set(segments.map(s=>new URL(s.url).pathname))}
 }
-export function createRuntime({resolve,fetchImpl=fetch,now=Date.now,ttlMs=300000,refreshAheadMs=90000,activeMs=600000,onEvent=()=>{},auto=true}={}){
+// Every resolve opens the official player in Chromium (#182-class CPU on NAS boxes), so:
+// - ttlMs is a hard ceiling for serving a ticket without re-verification, not a renewal
+//   cadence. Official signatures carry only an issue time (qd_tm), no expiry, so the real
+//   lifetime is learned: when the CDN first refuses a ticket, later tickets renew a little
+//   before that age (never earlier than minLifetimeMs).
+// - A verdict (full rights confirmed) lasts verdictTtlMs and is what the exported playlist
+//   publishes; a playable ticket is only fetched when someone actually plays.
+export function createRuntime({resolve,fetchImpl=fetch,now=Date.now,ttlMs=1800000,refreshAheadMs=90000,minLifetimeMs=120000,verdictTtlMs=21600000,activeMs=600000,onEvent=()=>{},auto=true}={}){
   if(typeof resolve!=='function' || ttlMs<1000 || refreshAheadMs<=0 || refreshAheadMs>=ttlMs)throw new Error('Invalid resolver/cache configuration')
   const entries=new Map(),prefix=randomBytes(4).toString('hex'),controller=new AbortController()
-  let serial=Promise.resolve(),counter=0,closed=false,epoch=0
+  let serial=Promise.resolve(),counter=0,closed=false,epoch=0,lifetime=ttlMs
+  const renewAfter=()=>Math.max(Math.min(minLifetimeMs,ttlMs-refreshAheadMs),lifetime-refreshAheadMs)
   function entry(id){
     if(!samples.some(s=>s.id===id))throw fail('未知影视样本','NOT_FOUND')
     if(!entries.has(id))entries.set(id,{id,generations:new Map(),lastAccess:-Infinity,refreshCount:0})
@@ -44,24 +52,25 @@ export function createRuntime({resolve,fetchImpl=fetch,now=Date.now,ttlMs=300000
     if(closed)return Promise.reject(fail('测试服务已停止'))
     if(failedVersion && e.current && e.current.version!==failedVersion && e.current.expiresAt>now() && !e.revoked)return Promise.resolve(e.current)
     if(e.pending)return e.pending
-    if(!manual && e.retryAt>now())return Promise.reject(fail(e.lastError||'官方解析暂不可用',e.revoked?'NOT_AUTHORIZED':'UNAVAILABLE'))
+    // skipped: no browser was opened, so callers must not count this as a verification.
+    if(!manual && e.retryAt>now())return Promise.reject(Object.assign(fail(e.lastError||'官方解析暂不可用',e.revoked?'NOT_AUTHORIZED':'UNAVAILABLE'),{skipped:true}))
     const startedEpoch=epoch
     const task=serial.catch(()=>{}).then(async()=>{
       if(closed)throw fail('测试服务已停止')
       emit({id,reason,outcome:'started'})
       try{
-        const sample=samples.find(s=>s.id===id),result=await resolve(sample,{signal:controller.signal})
+        const sample=samples.find(s=>s.id===id),result=await resolve(sample,{signal:controller.signal,renewal:e.current&&!e.revoked&&e.current.expectedSeconds===sample.expectedSeconds?{bid:e.current.bid}:null})
         if(closed||startedEpoch!==epoch)throw fail('账号授权已变化，请重新播放','AUTH_REQUIRED')
         const parsed=parseManifest(result.text,sample.expectedSeconds)
-        const issued=now(),value={...parsed,id,officialPage:sample.url,version:prefix+'-'+(++counter),createdAt:issued,expiresAt:issued+ttlMs,renewAt:issued+ttlMs-refreshAheadMs,lastAccess:issued,checks:result.checks||[],danmaku:result.danmaku||null}
+        const issued=now(),value={...parsed,id,officialPage:sample.url,expectedSeconds:sample.expectedSeconds,bid:result.bid,version:prefix+'-'+(++counter),createdAt:issued,expiresAt:issued+ttlMs,renewAt:issued+renewAfter(),lastAccess:issued,checks:result.checks||[],danmaku:result.danmaku||null}
         value.byIdentity=new Map(value.segments.map(s=>[s.identity,s]))
-        e.current=value;e.generations.set(value.version,value);e.revoked=false;e.retryAt=0;e.lastError='';e.refreshCount++;e.lastReason=reason
+        e.current=value;e.generations.set(value.version,value);e.revoked=false;e.retryAt=0;e.lastError='';e.refreshCount++;e.lastReason=reason;e.verifiedAt=issued
         emit({id,reason,outcome:'success',version:value.version,expiresAt:value.expiresAt,segments:value.segments.length})
         return value
       }catch(error){
         e.lastError=error.code==='NOT_AUTHORIZED'?'官方只获试看或登录权益不足；未发布播放清单':'官方解析暂未完成，请稍后重试'
         e.retryAt=now()+30000
-        if(error.code==='NOT_AUTHORIZED')e.revoked=true
+        if(error.code==='NOT_AUTHORIZED'){e.revoked=true;e.verifiedAt=0}
         emit({id,reason,outcome:'failed',code:error.code||'UNAVAILABLE'})
         throw fail(e.lastError,error.code||'UNAVAILABLE')
       }
@@ -111,6 +120,7 @@ export function createRuntime({resolve,fetchImpl=fetch,now=Date.now,ttlMs=300000
     const invalid=r=>!r || [401,403,404,405,410].includes(r.status) || (r.ok && /json|html|xml/.test(r.headers.get('content-type')||''))
     if(invalid(response)){
       await response?.body?.cancel().catch(()=>{})
+      const refusedAge=[401,403,410].includes(response?.status)?now()-current.createdAt:null
       emit({id,outcome:'media-retry',reason:response?'http-'+response.status:'network',version})
       current=await refresh(id,{reason:'upstream-refused',failedVersion:current.version})
       response=await request(current)
@@ -119,6 +129,9 @@ export function createRuntime({resolve,fetchImpl=fetch,now=Date.now,ttlMs=300000
         e.retryAt=now()+30000;e.lastError='官方分片续期后仍不可用，请稍后重试'
         throw fail(e.lastError)
       }
+      // Only a refusal that a fresh ticket cures says how long official tickets really last
+      // (exit-IP refusals unrelated to signatures fail the retry too); renew before that age.
+      if(refusedAge!==null&&refusedAge>=minLifetimeMs&&refusedAge<lifetime){lifetime=refusedAge;emit({id,outcome:'lifetime-learned',lifetimeMs:refusedAge})}
     }
     if(e.revoked || current.expiresAt<=now()){
       await response.body?.cancel().catch(()=>{})
@@ -128,7 +141,7 @@ export function createRuntime({resolve,fetchImpl=fetch,now=Date.now,ttlMs=300000
   }
   function status(){return samples.map(sample=>{
     const e=entries.get(sample.id),v=e?.current
-    return {id:sample.id,url:sample.url,title:sample.title,seconds:sample.expectedSeconds,state:e?.revoked?'denied':v&&v.expiresAt>now()?'ready':e?.lastError?'failed':v?'expired':'unresolved',resolving:!!e?.pending,version:v?.version||null,refreshedAt:v?.createdAt||null,expiresAt:v?.expiresAt||null,nextRefreshAt:v?.renewAt||null,refreshCount:e?.refreshCount||0,lastReason:e?.lastReason||null,lastError:e?.lastError||'',ttlMs,refreshAheadMs}
+    return {id:sample.id,url:sample.url,title:sample.title,seconds:sample.expectedSeconds,state:e?.revoked?'denied':v&&v.expiresAt>now()?'ready':e?.lastError?'failed':v?'expired':'unresolved',verified:!e?.revoked&&e?.verifiedAt>now()-verdictTtlMs,verifiedAt:e?.verifiedAt||null,resolving:!!e?.pending,version:v?.version||null,refreshedAt:v?.createdAt||null,expiresAt:v?.expiresAt||null,nextRefreshAt:v?.renewAt||null,refreshCount:e?.refreshCount||0,lastReason:e?.lastReason||null,lastError:e?.lastError||'',ttlMs,refreshAheadMs}
   })}
   async function tick(){
     const jobs=[]
@@ -143,8 +156,10 @@ export function createRuntime({resolve,fetchImpl=fetch,now=Date.now,ttlMs=300000
   async function verify(id){
     const e=entry(id)
     if(e.revoked && e.retryAt>now())throw fail(e.lastError,'NOT_AUTHORIZED')
-    if(e.current && !e.revoked && e.current.expiresAt>now())return e.current
-    return refresh(id,{reason:'playlist-verification'})
+    if(e.current && !e.revoked && e.current.expiresAt>now())return {cached:true}
+    if(!e.revoked && e.verifiedAt>now()-verdictTtlMs)return {cached:true}
+    await refresh(id,{reason:'playlist-verification'})
+    return {cached:false}
   }
-  return {reset(){epoch++;entries.clear()},get,verify,manifest,media,status,tick,refresh:(id)=>{entry(id).lastAccess=now();return refresh(id,{reason:'manual',manual:true})},async close(){closed=true;clearInterval(timer);controller.abort();await serial}}
+  return {reset(){epoch++;entries.clear();lifetime=ttlMs},get,verify,manifest,media,status,tick,refresh:(id)=>{entry(id).lastAccess=now();return refresh(id,{reason:'manual',manual:true})},async close(){closed=true;clearInterval(timer);controller.abort();await serial}}
 }

@@ -112,3 +112,20 @@ test('verified video identity remains attached to its own runtime generation for
  const s=setup({resolve:async sample=>({...fixture(sample),danmaku:sample.id==='drama'?{videoId:'1075449600'}:null})})
  assert.deepEqual((await s.runtime.get('drama')).danmaku,{videoId:'1075449600'});assert.equal((await s.runtime.get('movie')).danmaku,null);await s.runtime.close()
 })
+test('ticket lifetime is learned only from refusals that a fresh ticket cures, and reset restores it',async()=>{
+ const {createRuntime}=await import('../../extractors/iqiyi-vod/scripts/runtime.mjs')
+ let time=0,refuse=0;const events=[]
+ const runtime=createRuntime({auto:false,now:()=>time,onEvent:e=>events.push(e),
+  resolve:async sample=>({text:`#EXTM3U\n#EXTINF:${sample.expectedSeconds},\nhttps://fixture.71edge.com/a.ts\n#EXT-X-ENDLIST`}),
+  fetchImpl:async()=>refuse-->0?new Response('',{status:403}):new Response(new Uint8Array([0x47]),{headers:{'content-type':'video/mp2t'}})})
+ const version=()=>runtime.status().find(s=>s.id==='movie').version
+ await runtime.manifest('movie');time=600000;refuse=2
+ await assert.rejects(runtime.media('movie',version(),0))
+ assert.equal(events.filter(e=>e.outcome==='lifetime-learned').length,0,'新票也被拒（出口问题）不算票龄')
+ time+=31000;await runtime.manifest('movie');time+=600000;refuse=1
+ assert.equal((await runtime.media('movie',version(),0)).status,200)
+ const learned=events.filter(e=>e.outcome==='lifetime-learned');assert.equal(learned.length,1);assert.equal(learned[0].lifetimeMs,631000,'票龄从被拒的那张票签发时算')
+ runtime.reset();await runtime.manifest('movie')
+ assert.equal(runtime.status().find(s=>s.id==='movie').nextRefreshAt-time,1800000-90000,'换账号后恢复默认续期')
+ await runtime.close()
+})

@@ -6,7 +6,7 @@ const entry=(id,scope)=>({sample:sample(id),scope,group:scope})
 const origin='http://127.0.0.1:8807'
 function setup(entries,verify=async()=>{}){
  const states=new Map(),calls=[]
- const runtime={status:()=>[...states].map(([id,state])=>({id,state})),verify:async id=>{calls.push(id);try{await verify(id);states.set(id,'ready')}catch(error){states.set(id,error.code==='NOT_AUTHORIZED'?'denied':'failed');throw error}}}
+ const runtime={status:()=>[...states].map(([id,state])=>({id,state,verified:state==='ready'})),verify:async id=>{calls.push(id);try{await verify(id);states.set(id,'ready')}catch(error){states.set(id,error.code==='NOT_AUTHORIZED'?'denied':'failed');throw error}}}
  return {states,calls,service:createCollectionExport({origin,runtime,load:async()=>({entries})})}
 }
 test('collection includes all homepage tabs and history, preserves groups, verifies shared videos only once',async()=>{
@@ -33,7 +33,30 @@ test('a first subscription waits for verification and concurrent imports share a
 })
 test('failed directory refresh does not retain the earlier export and empty subscriptions fail closed',async()=>{
  let broken=false
- const service=createCollectionExport({origin,runtime:{status:()=>[{id:'a',state:'ready'}],verify:async()=>{}},load:async()=>{if(broken)throw Error('read failed');return {entries:[entry('a','recommend')]}}})
+ const service=createCollectionExport({origin,runtime:{status:()=>[{id:'a',state:'ready',verified:true}],verify:async()=>{}},load:async()=>{if(broken)throw Error('read failed');return {entries:[entry('a','recommend')]}}})
  await service.start();assert.match(service.text(),/\/play\/a.m3u8/);broken=true;await service.start();assert.throws(()=>service.text());assert.equal(service.status().finished,false)
  await assert.rejects(service.playlist('all',{waitMs:5}));await service.close()
+})
+test('a round verifies at most roundLimit new titles, and subscriptions start rounds only after the cooldown',async()=>{
+ let clock=0
+ const states=new Map(),calls=[]
+ const runtime={status:()=>[...states].map(([id,state])=>({id,state,verified:state==='ready'})),verify:async id=>{calls.push(id);if(states.get(id)==='ready')return {cached:true};states.set(id,'ready');return {cached:false}}}
+ const entries=Array.from({length:5},(_,i)=>entry('v'+i,'recommend'))
+ const service=createCollectionExport({origin,runtime,now:()=>clock,roundLimit:2,autoCooldownMs:1000,load:async()=>({entries})})
+ await service.start();assert.equal(calls.length,2);assert.match(service.status().warnings.join(),/其余下一轮继续/)
+ await service.playlist();assert.equal(calls.length,2,'冷却期内拉清单不再开新一轮')
+ clock+=1000;await service.playlist();await new Promise(r=>setImmediate(r));await new Promise(r=>setImmediate(r))
+ assert.equal(calls.filter(id=>id==='v2'||id==='v3').length,2,'冷却后的新一轮接着核验没核过的')
+ await service.close()
+})
+test('re-checking the login or a failed directory read never leaves the playlist empty for the whole cooldown',async()=>{
+ let clock=0,broken=false
+ const states=new Map()
+ const runtime={status:()=>[...states].map(([id,state])=>({id,state,verified:state==='ready'})),verify:async id=>{states.set(id,'ready');return {cached:false}}}
+ const service=createCollectionExport({origin,runtime,now:()=>clock,autoCooldownMs:7200000,load:async()=>{if(broken)throw Error('busy');return {entries:[entry('a','recommend')]}}})
+ await service.start();states.clear();service.invalidate()
+ assert.match(await service.playlist('all',{waitMs:50}),/\/play\/a.m3u8/,'检查登录后立即重新核验')
+ broken=true;service.invalidate();states.clear();await service.start();broken=false
+ clock+=300000;assert.match(await service.playlist('all',{waitMs:50}),/\/play\/a.m3u8/,'读片单失败 5 分钟后重试')
+ await service.close()
 })

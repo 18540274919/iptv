@@ -29,10 +29,10 @@ export function nextEpisode(list,id){
  const next=list.items.find(e=>e.order===current.order+1)
  return {next:next||null,reason:next?'':list.items.some(e=>e.order>current.order)?'下一集目录暂缺，已停止自动连播':current.order<list.total?'后续正片尚未上线':'已到最后一集'}
 }
-async function readEpisodeList(item){
+async function readEpisodeList(item,{signal}={}){
  const jobs=path.join(runtimeDir,'jobs');await mkdir(jobs,{recursive:true,mode:0o700});const job=await mkdtemp(path.join(jobs,'episodes-')),output=path.join(job,'list.json')
  try{
-  await browserJob(path.join(root,'scripts/episode-probe.mjs'),{cwd:root,timeout:70000,maxBuffer:262144,env:{...process.env,IQIYI_EPISODE_ITEM:JSON.stringify({url:item.url,albumId:item.albumId}),IQIYI_EPISODE_OUTPUT:output}})
+  await browserJob(path.join(root,'scripts/episode-probe.mjs'),{cwd:root,signal,timeout:70000,maxBuffer:262144,env:{...process.env,IQIYI_EPISODE_ITEM:JSON.stringify({url:item.url,albumId:item.albumId}),IQIYI_EPISODE_OUTPUT:output}})
   return JSON.parse(await readFile(output,'utf8'))
  }catch{throw fail('官网选集目录暂未获取，请稍后重试；当前登录态保留')}
  finally{await rm(job,{recursive:true,force:true})}
@@ -44,7 +44,7 @@ export function createEpisodes({read=readEpisodeList,fetchImpl=fetch,now=Date.no
   if(Number(item.channelId)!==2||!/^\d+$/.test(item.albumId||''))throw fail('此条目不是可选集的电视剧','UNSUPPORTED')
   const key=item.albumId,cached=cache.get(key);if(cached&&now()-cached.fetchedAt<ttlMs)return cached
   if(pending.has(key))return pending.get(key)
-  const task=(async()=>{const data=await read(item);if(data.albumId!==key||!Array.isArray(data.items))throw fail('目录专辑标识不匹配');const value={...data,fetchedAt:now()};cache.set(key,value);return value})().finally(()=>pending.delete(key));pending.set(key,task);return task
+  const task=(async()=>{const data=await read(item,{signal:controller.signal});if(data.albumId!==key||!Array.isArray(data.items))throw fail('目录专辑标识不匹配');const value={...data,fetchedAt:now()};cache.set(key,value);return value})().finally(()=>pending.delete(key));pending.set(key,task);return task
  }
  async function prepare(item,id){
   const data=await get(item),episode=data.items.find(e=>e.id===id);if(!episode)throw fail('剧集已更新，请重新打开选集','NOT_FOUND')

@@ -848,7 +848,8 @@ class ExtractorManager {
     const previousRejected = entry.health?.credentialConfigKey === configKey ? (entry.health?.credentialRejected || '') : ''
     entry.health = {
       ...emptyHealth(),
-      status: count > 0 ? 'ok' : 'empty',
+      // channelless 模块（如爱奇艺影视）只在自己的页面里提供内容，没频道不代表抓取出问题
+      status: count > 0 || getModule(id)?.channelless ? 'ok' : 'empty',
       lastAttemptAt: entry.fetchedAt,
       lastSuccessAt: entry.fetchedAt,
       channelCount: count,

@@ -1,10 +1,30 @@
-import { mkdir, copyFile, chmod } from 'node:fs/promises'
+import { mkdir, copyFile, chmod, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-const exec = promisify(execFile)
-// Never launch the source profile. SQLite backup reads a consistent cookie snapshot
-// even when the owner's Chromium is running; no cookie values leave this function.
+// Never launch the source profile. A SQLite snapshot (VACUUM INTO on a read-only
+// connection) reads a consistent cookie database even while the owner's Chromium is
+// running; no cookie values leave this function. Node's built-in sqlite replaces the
+// former python3 helper, so the image needs no Python.
+export async function copyCookies(source, destination) {
+  for (const name of ['Default/Cookies', 'Default/Network/Cookies']) {
+    const from = path.join(source, name)
+    if (!existsSync(from)) continue
+    const to = path.join(destination, name)
+    await mkdir(path.dirname(to), { recursive: true, mode: 0o700 })
+    await rm(to, { force: true })
+    let sqlite
+    try { sqlite = await import('node:sqlite') } catch { /* Node without node:sqlite */ }
+    if (sqlite) {
+      // A failed snapshot (e.g. a busy database) is an error, never a raw copy of a live file.
+      const db = new sqlite.DatabaseSync(from, { readOnly: true })
+      try { db.exec(`VACUUM INTO '${to.replaceAll("'", "''")}'`) } finally { db.close() }
+    } else {
+      // The login browser is closed after every login or import, so the file is settled.
+      await copyFile(from, to)
+    }
+    await chmod(to, 0o600)
+  }
+}
 export async function cloneProfile(source, destination) {
   await mkdir(destination, { recursive: true, mode: 0o700 })
   for (const name of ['Local State', 'Default/Preferences', 'Default/Secure Preferences']) {
@@ -12,13 +32,5 @@ export async function cloneProfile(source, destination) {
     try { await mkdir(path.dirname(target), { recursive: true, mode: 0o700 }); await copyFile(path.join(source, name), target); await chmod(target, 0o600) }
     catch (error) { if (error.code !== 'ENOENT') throw error }
   }
-  await exec('python3', ['-c', `import pathlib,sqlite3,sys,os
-src=pathlib.Path(sys.argv[1]);dest=pathlib.Path(sys.argv[2])
-for name in ['Default/Cookies','Default/Network/Cookies']:
- p=src/name
- if p.exists():
-  q=dest/name;q.parent.mkdir(parents=True,exist_ok=True)
-  with sqlite3.connect(p.as_uri()+'?mode=ro',uri=True) as a,sqlite3.connect(q) as b:a.backup(b)
-  q.chmod(0o600)
-`, source, destination], { timeout: 15000, maxBuffer: 4096 })
+  await copyCookies(source, destination)
 }
