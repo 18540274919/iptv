@@ -5172,12 +5172,30 @@
                 </div>`;
             }
             if (key === 'iqiyi-vod') {
+                setTimeout(() => { if (selectedExtractorId === 'iqiyi-vod') vodLoginAction('status', true); }, 0);
                 return `<div class="bookmarklet-section" style="margin:0 0 12px;">
-                    <div class="bookmarklet-title">爱奇艺影视</div>
-                    <p style="font-size:13px;color:#888;line-height:1.7;margin:10px 0;">浏览首页推荐、最热、最新与继续观看，支持选集、本机进度与弹幕。影视使用按需生成的专用清单，不作为固定电视频道收录。</p>
-                    <a class="btn btn-sm btn-primary" href="${escapeHtml(API_PREFIX)}/iqiyi-vod/" target="_blank" rel="noopener">打开影视浏览页</a>
-                    <a class="btn btn-sm" href="${escapeHtml(API_PREFIX)}/iqiyi-vod/playlist.m3u" target="_blank" rel="noopener">播放器 M3U</a>
-                    <p style="font-size:12px;color:#888;line-height:1.7;margin-top:10px;">登录在影视浏览页顶部的「爱奇艺账号」里，按页面上的步骤导入 Cookie（和爱奇艺体育的登录互相独立，需要分别导入）；只发布完整观看权限已确认的内容。试看、无权限和核验失败均不供流。影视只有管理员地址能用（播放用的是你本人的会员），用户令牌无法访问；没设访问密码时任何能连上端口的人都能用，建议先设访问密码。</p>
+                    <div class="bookmarklet-title"><span>爱奇艺影视账号</span><span id="vodLoginState" class="login-state-badge off">正在检查登录态…</span></div>
+                    <div id="vodLoginMessage" style="font-size:12px;color:#888;margin-top:8px;line-height:1.7;">影视和爱奇艺体育各用一份独立登录：在体育里导入过 Cookie，这里还要再导入一次。</div>
+                    <div class="bookmarklet-actions" style="margin-top:10px;">
+                        <a href="https://www.iqiyi.com/" target="_blank" rel="noopener noreferrer">在当前电脑打开爱奇艺官网 ↗</a>
+                        <button id="vodLoginCheck" class="btn btn-sm" onclick="vodLoginAction('check')">检查登录</button>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;flex-wrap:wrap;">
+                        <textarea id="vodLoginImportInput" rows="3" autocomplete="off" spellcheck="false" placeholder="粘贴本人完整 Cookie 请求头或 Cookie JSON" style="flex:1;min-width:240px;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;font-family:monospace;"></textarea>
+                        <button id="vodLoginImport" class="btn btn-sm btn-primary" onclick="vodLoginAction('import')">验证并导入 Cookie</button>
+                    </div>
+                    <ol style="font-size:12px;color:#888;margin:8px 0 0;padding-left:18px;line-height:1.8;">
+                        <li>在自己的电脑用 Chrome 或 Edge 打开爱奇艺官网，登录本人账号。</li>
+                        <li>按 F12（Mac 按 ⌥⌘I）打开开发者工具，切到「Network（网络）」，刷新页面。</li>
+                        <li>点列表里任意一条 iqiyi.com 的请求，在「Request Headers（请求标头）」里复制 <code>Cookie</code> 的完整值（很长，要包含 <code>P00001=</code>）；也支持导出的 iqiyi.com Cookie JSON。</li>
+                        <li>粘贴到上面的输入框，点「验证并导入 Cookie」，显示账号有效即完成。</li>
+                    </ol>
+                    <div style="font-size:12px;color:#888;margin-top:6px;line-height:1.7;">仅在官方确认账号有效后替换，校验失败保留原登录态；影视权益按每部内容单独核验，会员不代表所有内容都能看。凭据只存在服务端数据目录，不进配置备份；Cookie 过期后重新导入即可。服务装在有桌面的电脑上、从本机打开时，也可以在影视浏览页用「本机官方网页登录」扫码。</div>
+                    <div class="bookmarklet-actions" style="margin-top:12px;">
+                        <a class="btn btn-sm btn-primary" href="${escapeHtml(API_PREFIX)}/iqiyi-vod/" target="_blank" rel="noopener">打开影视浏览页</a>
+                        <a class="btn btn-sm" href="${escapeHtml(API_PREFIX)}/iqiyi-vod/playlist.m3u" target="_blank" rel="noopener">播放器 M3U</a>
+                    </div>
+                    <p style="font-size:12px;color:#888;line-height:1.7;margin-top:10px;">浏览首页推荐、最热、最新与继续观看，支持选集、本机进度与弹幕；影视使用按需生成的专用清单，不作为固定电视频道收录，只发布完整观看权限已确认的内容。影视只有管理员地址能用（播放用的是你本人的会员），用户令牌无法访问；没设访问密码时任何能连上端口的人都能用，建议先设访问密码。</p>
                 </div>`;
             }
             if (key === 'iqiyi-sports-login') {
@@ -5898,6 +5916,33 @@
 
         let iqiyiLoginBusy = false;
         let iqiyiLoginState = {};
+        // 爱奇艺影视账号：接口在模块自己的路由下（/iqiyi-vod/api/account），与体育的登录互相独立。
+        async function vodLoginAction(action, quiet = false) {
+            const badge = document.getElementById('vodLoginState'), message = document.getElementById('vodLoginMessage');
+            const input = document.getElementById('vodLoginImportInput');
+            if (!badge || !message) return;
+            const buttons = ['vodLoginCheck', 'vodLoginImport'].map(id => document.getElementById(id)).filter(Boolean);
+            if (action === 'import' && !(input && input.value.trim())) { message.textContent = '请先粘贴完整 Cookie 请求头或 Cookie JSON'; return; }
+            if (!quiet) { buttons.forEach(b => b.disabled = true); message.textContent = '正在处理，请稍候…'; }
+            try {
+                const url = `${API_PREFIX}/iqiyi-vod/api/account`;
+                const response = action === 'status' ? await fetch(url)
+                    : await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...(action === 'import' ? { cookies: input.value } : {}) }) });
+                if (response.status === 404) throw new Error('请先启用「爱奇艺影视」模块，再导入 Cookie');
+                const state = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(state.error || '账号操作未完成');
+                if (action === 'import' && input) input.value = '';
+                const ok = !!state.authenticated, saved = !!state.hasSavedLogin;
+                badge.className = 'login-state-badge ' + (ok || saved ? 'on' : 'off');
+                badge.textContent = ok ? '✅ 已登录' : saved ? '已保存登录' : '未登录';
+                message.textContent = state.message || '';
+            } catch (error) {
+                badge.className = 'login-state-badge off';
+                badge.textContent = '未登录';
+                message.textContent = error.message;
+            } finally { buttons.forEach(b => b.disabled = false); }
+        }
+
         async function iqiyiLoginAction(action, quiet = false) {
             if (iqiyiLoginBusy || selectedExtractorId !== 'iqiyi-sports') return;
             const input = document.getElementById('iqiyiLoginImportInput');
