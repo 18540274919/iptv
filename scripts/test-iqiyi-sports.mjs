@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createCatalog, CONFIG_URL, normalizeEvents, selectAuthorizedStream, validateMediaUrl } from '../extractors/iqiyi-sports/api.js'
+import { createCatalog, CONFIG_URL, normalizeEvents, normalizeVods, eventName, selectVodStream, selectAuthorizedStream, validateMediaUrl } from '../extractors/iqiyi-sports/api.js'
 import { parseCookies } from '../extractors/iqiyi-sports/cookies.js'
+import { createBrowserAuth } from '../extractors/iqiyi-sports/auth.js'
 import { createRuntime } from '../extractors/iqiyi-sports/runtime.js'
 import module from '../extractors/iqiyi-sports/index.js'
 import { getModule, resolverFor } from '../extractors/registry.js'
@@ -184,4 +185,105 @@ test('cookie import is domain restricted, preserves equals in values, and makes 
   assert.throws(() => parseCookies('foo=bar'), /P00001/)
   assert.throws(() => parseCookies('P00001=a\nOther=b'), /一行/)
   assert.throws(() => parseCookies(JSON.stringify([{ name: 'P00001', value: 'fixture', domain: '.evil.com' }])), /iqiyi/)
+})
+
+// Official 2026-10-17 sports cards: separate jumpInfoLived / jumpInfoHighlight.
+const replayJump = { iqiyiPC: 'https://sports.iqiyi.com/resource/pcw/play/16ufymbi2ew', qipuid: '4223102379481300' }
+const highlightJump = { iqiyiPC: 'https://sports.iqiyi.com/resource/pcw/play/qstb9ce7xc', qipuid: '2778401687812300' }
+const endedCard = { commonBaseInfo: { type: 'lived' }, matchBaseInfo: { title: '朗斯vs葡萄牙体育', status: '2', matchRoomStartTime: '2026-10-14 00:40' },
+  jumpInfoLived: replayJump, jumpInfoHighlight: highlightJump }
+const clipCard = { commonBaseInfo: { type: 'V', qipuid: highlightJump.qipuid, customerMakerName: '集锦', payInfo: { isFree: '1' } },
+  specialBaseInfo: { title: '【集锦】朗斯0-2葡萄牙体育', publishTime: '2026-10-14 03:20:00' }, jumpInfo: highlightJump }
+function vodCapture(event, overrides = {}) {
+  return { code: 'A00000', hasLogin: false, data: { tvid: event.qipuId, program: { video: [{
+    code: 2, ff: 'ts', bid: 500, drmType: 1, duration: 4, isPreview: 0,
+    m3u8: hls(1) + '#EXT-X-ENDLIST\n', ...overrides,
+  }] } } }
+}
+test('VOD cards use explicit replay/highlight markers, deduplicate video IDs, retain dates and exclude news/foreign pages', async () => {
+  const news = { ...clipCard, commonBaseInfo: { ...clipCard.commonBaseInfo, customerMakerName: '' }, specialBaseInfo: { title: '赛事新闻', publishTime: '2026-10-17' } }
+  const foreign = { ...clipCard, jumpInfo: { ...highlightJump, iqiyiPC: 'https://example.com/play/123' } }
+  const result = normalizeVods(catalogBody([endedCard, clipCard, news, foreign, endedCard]))
+  assert.equal(result.length, 2)
+  assert.deepEqual(new Set(result.map(e => e.kind)), new Set(['replay', 'highlight']))
+  const replay = result.find(e => e.kind === 'replay')
+  assert.equal(replay.qipuId, replayJump.qipuid)
+  assert.equal(replay.id, 'vod-' + replayJump.qipuid)
+  assert.equal(eventName(replay), '[回放] 10月14日 朗斯vs葡萄牙体育')
+  assert.match(eventName(event), /^\[直播\]/)
+  const moduleResult = await module.fetch({}, { catalog: { discover: async () => ({ events: [event], vods: result, warnings: [] }) } })
+  assert.equal(moduleResult.groups.length, 1); assert.equal(moduleResult.groups[0].name, '爱奇艺体育')
+  assert.equal(moduleResult.groups[0].dataList.length, 3)
+  assert.equal(moduleResult.groups[0].dataList[1].deferredRef, 'iqiyi-sports-vod-' + replayJump.qipuid)
+  assert.equal(resolverFor('iqiyi-sports-vod-' + replayJump.qipuid), module)
+  assert.equal(resolverFor('iqiyi-sports-vod-123/evil'), null)
+})
+test('VOD resolver returns a finite seekable HLS from the official player and renews its ticket on expiry', async () => {
+  const vod = normalizeVods(catalogBody([endedCard]))[0]
+  let clock = 0, captures = 0
+  const auth = { revision: () => 0, flow: { status: () => ({}) }, capture: async () => { captures++; return vodCapture(vod) }, shutdown: async () => {} }
+  const runtime = createRuntime({ catalog: { discover: async () => ({ events: [], vods: [vod] }) }, auth, now: () => clock,
+    fetchImpl: async () => { throw new Error('inline VOD must not fetch an invented manifest URL') } })
+  const result = await runtime.resolve('iqiyi-sports-' + vod.id)
+  assert.match(result.manifestText, /#EXT-X-ENDLIST/)
+  assert.match(result.manifestText, /#EXT-X-PLAYLIST-TYPE:VOD/)
+  assert.doesNotMatch(result.desc, /50帧/)
+  await runtime.resolve('iqiyi-sports-' + vod.id); assert.equal(captures, 1)
+  clock += 240001; await runtime.resolve('iqiyi-sports-' + vod.id); assert.equal(captures, 2)
+})
+test('VOD rejects mismatched IDs, partial previews, DRM and foreign segments without treating server errors as expired credentials', () => {
+  const vod = normalizeVods(catalogBody([endedCard]))[0]
+  assert.equal(selectVodStream(vodCapture(vod), vod).duration, 4)
+  assert.throws(() => selectVodStream(vodCapture({ ...vod, qipuId: '123' }), vod), /不一致/)
+  assert.throws(() => selectVodStream(vodCapture(vod, { isPreview: 1 }), vod), e => e.credential === true)
+  assert.throws(() => selectVodStream(vodCapture(vod, { duration: 180 }), vod), /未提供完整/)
+  assert.throws(() => selectVodStream(vodCapture(vod, { drmType: 2 }), vod), /DRM/)
+  assert.throws(() => selectVodStream(vodCapture(vod, { m3u8: '#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="license"\n#EXT-X-ENDLIST' }), vod), /加密/)
+  assert.throws(() => selectVodStream(vodCapture(vod, { m3u8: hls(1).replace('spqcloudcdncnc.inter.71edge.com', 'evil.com') + '#EXT-X-ENDLIST' }), vod), /CDN/)
+  assert.throws(() => selectVodStream({ code: 'SERVER_ERROR' }, vod), e => !e.credential)
+})
+test('catalog merges and sorts VOD from ordinary menus and nested topics, leaving live detail verification separate', async () => {
+  const menu = 'https://sports.iqiyi.com/resource/json/pc/channel/menu_123.json'
+  const catalog = createCatalog({ fetchImpl: async url => Response.json(url === CONFIG_URL
+    ? { retData: { menuConfigList: [{ url: menu }] } } : catalogBody([clipCard, endedCard])) })
+  const result = await catalog.discover()
+  assert.equal(result.events.length, 0); assert.equal(result.vods.length, 2)
+  assert.ok(result.vods[0].publishedAt >= result.vods[1].publishedAt)
+})
+
+test('browser capture keeps live/free response shape and captures only the requested VOD dash response', async () => {
+  let listener, mode, calls = 0
+  const page = { on: (_event, fn) => { listener = fn }, cookies: async () => [], close: async () => {},
+    goto: async () => {
+      calls++
+      const data = mode.kind ? vodCapture(mode) : { data: { streams: authorized().streams, boss: 0 } }
+      const url = mode.kind ? `https://cache.video.iqiyi.com/dash?tvid=${mode.qipuId}` : 'https://live.video.iqiyi.com/live?lp=fixture'
+      await listener({ url: () => url, text: async () => JSON.stringify(data) })
+    } }
+  const browser = { connected: true, on: () => {}, defaultBrowserContext: () => ({ newPage: async () => page }) }
+  const auth = createBrowserAuth({ profile: '/tmp/iptv-iqiyi-auth-fixture', launchImpl: async () => browser, closeImpl: async () => {} })
+  mode = { ...event, free: true }
+  const live = await auth.capture(mode)
+  assert.equal(live.data.boss, 0); assert.ok(live.data.streams.length)
+  mode = normalizeVods(catalogBody([endedCard]))[0]
+  const vod = await auth.capture(mode)
+  assert.equal(vod.code, 'A00000'); assert.equal(String(vod.data.tvid), mode.qipuId)
+  assert.equal(calls, 2)
+  await auth.shutdown()
+})
+
+test('VOD login validation checks official account status instead of accepting an arbitrary cookie on public replays', async () => {
+  const vod = normalizeVods(catalogBody([endedCard]))[0]
+  let listener, valid = false
+  const page = { on: (_event, fn) => { listener = fn }, close: async () => {}, cookies: async () => [{ name: 'P00001', value: 'fixture' }],
+    goto: async url => {
+      if (url.includes('passport.iqiyi.com')) return { ok: () => true, json: async () => valid ? { code: 'A00000', data: { uid: 'fixture-user' } } : { code: 'P00100' } }
+      await listener({ url: () => `https://cache.video.iqiyi.com/dash?tvid=${vod.qipuId}`, text: async () => JSON.stringify(vodCapture(vod)) })
+    } }
+  const browser = { connected: true, on: () => {}, defaultBrowserContext: () => ({ newPage: async () => page }) }
+  const auth = createBrowserAuth({ getEvent: async () => vod, profile: '/tmp/iptv-iqiyi-auth-fixture', launchImpl: async () => browser, closeImpl: async () => {} })
+  assert.equal((await auth.flow.check()).authenticated, false)
+  valid = true
+  assert.equal((await auth.flow.check()).authenticated, true)
+  await auth.shutdown()
 })

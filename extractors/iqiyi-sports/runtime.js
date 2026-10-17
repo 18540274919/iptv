@@ -1,11 +1,11 @@
-import { createCatalog, officialFetch, selectAuthorizedStream, checkManifest, validateMediaUrl, claimsRef } from './api.js'
+import { createCatalog, officialFetch, selectAuthorizedMedia, checkManifest, validateMediaUrl, claimsRef } from './api.js'
 import { createBrowserAuth } from './auth.js'
 
 export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = officialFetch, now = Date.now } = {}) {
   auth ||= createBrowserAuth({ getEvent: async () => {
     // Free rooms prove nothing about the account; only member rooms can verify login.
-    const { events } = await catalog.discover()
-    return events.find(e => !e.free)
+    const { events, vods = [] } = await catalog.discover()
+    return events.find(e => !e.free) || vods.find(e => !e.free)
   } })
   const tickets = new Map(), pending = new Map()
   let rejected = '', revision = auth.revision(), capturing = false
@@ -32,8 +32,8 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
     capturing = true
     const task = (async () => {
       const captured = await auth.capture(event)
-      const result = selectAuthorizedStream(captured.data, captured.hasLogin)
-      if (captured.data.id && event.qipuId && String(captured.data.id) !== event.qipuId) throw new Error('官方播放房间与目录不一致，请刷新赛事目录')
+      const result = selectAuthorizedMedia(captured, event)
+      if (!event.kind && captured.data.id && event.qipuId && String(captured.data.id) !== event.qipuId) throw new Error('官方播放房间与目录不一致，请刷新赛事目录')
       const value = { ...result, expiresAt: now() + 240000, renewAt: now() + 150000, referer: event.officialPage }
       tickets.set(event.id, value); rejected = ''
       return value
@@ -42,6 +42,7 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
     try { return await task } finally { pending.delete(event.id); capturing = false }
   }
   async function manifest(result) {
+    if (result.manifestText) return { text: checkManifest(result.manifestText), url: result.referer }
     const response = await fetchImpl(result.url, { headers: { Referer: result.referer, 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) })
     if (!response.ok) throw Object.assign(new Error(`官方节目清单返回 HTTP ${response.status}`), { renew: [401, 403, 404, 410].includes(response.status) })
     const url = validateMediaUrl(response.url || result.url)
@@ -63,16 +64,17 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
         const id = ref.slice('iqiyi-sports-'.length)
         // Manifest polls take the cached catalog and refresh it in the background; only
         // an event missing from the cached copy waits for a fresh scan.
-        let event = (await catalog.discover({ allowStale: true })).events.find(e => e.id === id)
-        if (!event) event = (await catalog.discover()).events.find(e => e.id === id)
-        if (!event) return { url: '', desc: '此赛事已结束或不在官方在播目录中' }
+        const find = data => [...data.events, ...(data.vods || [])].find(e => e.id === id)
+        let event = find(await catalog.discover({ allowStale: true }))
+        if (!event) event = find(await catalog.discover())
+        if (!event) return { url: '', desc: '此内容已结束或不在官方直播及点播目录中' }
         let result = await ticket(event), hls
         try { hls = await manifest(result) }
         catch (error) {
           if (!error.renew) throw error
           tickets.delete(event.id); result = await ticket(event); hls = await manifest(result)
         }
-        return { url: result.url, desc: `${event.title} · ${result.size}${result.bid === 610 ? ' · 50帧档' : ''}`,
+        return { url: result.url, desc: `${event.title} · ${result.size}${!event.kind && result.bid === 610 ? ' · 50帧档' : ''}`,
           manifestText: hls.text, manifestUrl: hls.url,
           upstreamHeaders: target => { validateMediaUrl(target); return { Referer: event.officialPage, 'User-Agent': 'Mozilla/5.0' } },
           upstreamUrlTransform: validateMediaUrl }
