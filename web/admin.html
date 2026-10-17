@@ -5182,6 +5182,15 @@
                     <div style="font-size:12px; color:#888; margin-top:6px;">用 B 站手机 App 扫一下即可，凭据直接存到服务端、不经过这个页面。下面的输入框留空即不修改已保存的凭据。</div>
                 </div>`;
             }
+            if (key === 'iqiyi-vod') {
+                return `<div class="bookmarklet-section" style="margin:0 0 12px;">
+                    <div class="bookmarklet-title">爱奇艺影视</div>
+                    <p style="font-size:13px;color:#888;line-height:1.7;margin:10px 0;">浏览首页推荐、最热、最新与继续观看，支持选集、本机进度与弹幕。影视使用按需生成的专用清单，不作为固定电视频道收录。</p>
+                    <a class="btn btn-sm btn-primary" href="${escapeHtml(API_PREFIX)}/iqiyi-vod/" target="_blank" rel="noopener">打开影视浏览页</a>
+                    <a class="btn btn-sm" href="${escapeHtml(API_PREFIX)}/iqiyi-vod/playlist.m3u" target="_blank" rel="noopener">播放器 M3U</a>
+                    <p style="font-size:12px;color:#888;line-height:1.7;margin-top:10px;">登录与 Cookie 导入在影视页管理；只发布完整观看权限已确认的内容。试看、无权限和核验失败均不供流。</p>
+                </div>`;
+            }
             if (key === 'iqiyi-sports-login') {
                 const rejected = health && health.credentialRejected || '';
                 setTimeout(() => { if (selectedExtractorId === 'iqiyi-sports') iqiyiLoginAction('browserLoginStatus', true); }, 0);

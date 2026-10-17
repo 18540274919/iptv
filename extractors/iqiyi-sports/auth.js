@@ -8,7 +8,7 @@ import { selectAuthorizedMedia } from './api.js'
 // memory and one of the shared browser slots (#182). The profile on disk keeps the login.
 const IDLE_CLOSE_MS = 5 * 60 * 1000
 
-export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/chrome-profile'), launchImpl = launchBrowser, closeImpl = closeBrowser, idleCloseMs = IDLE_CLOSE_MS } = {}) {
+export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/chrome-profile'), launchImpl = launchBrowser, closeImpl = closeBrowser, idleCloseMs = IDLE_CLOSE_MS, accountOnly = false } = {}) {
   let browser, launching, closing, visible = false, busy = false, pages = 0, loginPage, revision = 0, idleTimer
   let state = { status: 'idle', authenticated: false, message: '请关联本人爱奇艺账号，并检查赛事观看权限' }
   const available = process.platform !== 'linux' || !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
@@ -119,6 +119,10 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     try { await verifyAccount((await ensure()).defaultBrowserContext()) } finally { pages--; armIdleClose() }
   }
   async function verify(context, event) {
+    if (accountOnly) {
+      await verifyAccount(context)
+      return { status: 'authenticated', authenticated: true, entitled: null, message: '官方已确认账号有效；每部影视仍单独核验完整观看权限' }
+    }
     // A replay card may be marked paid while its video is publicly playable.
     // Complete VOD + cookie presence alone cannot validate imported credentials.
     if (event.kind) await verifyAccount(context)
@@ -171,7 +175,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     check: () => action(async () => {
       await finishLoginWindow()
       const event = await getEvent()
-      if (!event) return { ...snapshot(), message: '当前目录没有可核验的会员直播或回放，暂时无法核验赛事权益；已保存的登录态保留' }
+      if (!event && !accountOnly) return { ...snapshot(), message: '当前目录没有可核验的会员直播或回放，暂时无法核验赛事权益；已保存的登录态保留' }
       try { state = await verify((await ensure()).defaultBrowserContext(), event); revision++ }
       catch (error) {
         if (error.credential || /没有确认/.test(error.message)) state = { status: 'error', authenticated: false, message: error.message }
@@ -184,7 +188,7 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
       return action(async () => {
         await finishLoginWindow()
         const event = await getEvent()
-        if (!event) throw new Error('当前目录没有可核验的会员直播或回放，无法验证导入凭证；请稍后导入，或在服务本机使用「本机官方网页登录」')
+        if (!event && !accountOnly) throw new Error('当前目录没有可核验的会员直播或回放，无法验证导入凭证；请稍后导入，或在服务本机使用「本机官方网页登录」')
         const b = await ensure(), staging = await b.createBrowserContext()
         try {
           await staging.setCookie(...cookies)

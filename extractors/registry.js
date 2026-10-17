@@ -185,6 +185,7 @@ import taizhou from './taizhou/index.js'
 import shaoxing from './shaoxing/index.js'
 import iqilu from './iqilu/index.js'
 import iqiyiSports from './iqiyi-sports/index.js'
+import iqiyiVOD from './iqiyi-vod/index.js'
 import kankanews from './kankanews/index.js'
 import livechina from './livechina/index.js'
 import lotustv from './lotustv/index.js'
@@ -225,6 +226,7 @@ const MODULES = [
   migu,
   yangshipin,
   iqiyiSports,
+  iqiyiVOD,
   fengshows,
   hkstv,
   lotustv,

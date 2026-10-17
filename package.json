@@ -4,6 +4,7 @@
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
+    "test:iqiyi-vod": "node --import ./scripts/test-iqiyi-vod/setup.mjs --test scripts/test-iqiyi-vod/test-*.mjs",
     "generate:announcement": "node scripts/generate-announcement-video.mjs",
     "generate:ysp-guide": "node scripts/generate-announcement-video.mjs ysp-login-guide",
     "generate:from-the-web-guide": "node scripts/generate-announcement-video.mjs from-the-web-guide",

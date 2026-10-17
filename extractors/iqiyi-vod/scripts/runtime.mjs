@@ -1,0 +1,150 @@
+import { randomBytes } from 'node:crypto'
+import { samples } from './samples.mjs'
+const fail=(message,code='UNAVAILABLE')=>Object.assign(new Error(message),{code})
+const stableKeys=['start','end','contentlength','sd']
+export function mediaIdentity(value){const u=new URL(value);return u.pathname+'?'+stableKeys.filter(k=>u.searchParams.has(k)).map(k=>k+'='+u.searchParams.get(k)).join('&')}
+export function validateMedia(value){
+  const u=new URL(value)
+  if(u.protocol!=='https:' || !/(^|\.)(71edge\.com|iqiyi\.com|qiyi\.com)$/.test(u.hostname) || u.username || u.password)throw fail('官方媒体地址不受支持')
+  return u
+}
+export function parseManifest(text,expectedSeconds){
+  if(!text.startsWith('#EXTM3U') || !/^#EXT-X-ENDLIST\s*$/m.test(text))throw fail('官方未返回完整点播清单')
+  if([...text.matchAll(/^#EXT-X-(?:SESSION-)?KEY:METHOD=([^,\r\n]+)/gm)].some(m=>m[1]!=='NONE') || /#EXT-X-MAP:|#EXT-X-STREAM-INF:/.test(text))throw fail('此格式或加密内容需要官方播放器','UNSUPPORTED')
+  const lines=[],segments=[];let duration=0,part=NaN,partLine=-1
+  for(const raw of text.split('\n')){
+    const line=raw.trim()
+    if(line.startsWith('#EXTINF:')){part=Number(line.match(/^#EXTINF:([\d.]+)/)?.[1]??NaN);partLine=lines.length}
+    if(line && !line.startsWith('#')){
+      const u=validateMedia(line)
+      // Some official full episodes include zero-duration TS placeholders.
+      // They carry no timeline time and must not become playable fragments.
+      if(part===0&&u.pathname.endsWith('.ts')){lines.splice(partLine);part=NaN;continue}
+      if(!(part>0) || !u.pathname.endsWith('.ts'))throw fail('官方清单分片格式不受支持')
+      lines.push({segment:segments.length})
+      segments.push({url:u.href,identity:mediaIdentity(u),duration:part,start:duration})
+      duration+=part;part=NaN
+    }else lines.push({text:raw})
+  }
+  if(!segments.length || Math.abs(duration-expectedSeconds)>10)throw fail('此内容只获试看或未返回完整片长','NOT_AUTHORIZED')
+  return {lines,segments,duration,origins:[...new Set(segments.map(s=>new URL(s.url).origin))],paths:new Set(segments.map(s=>new URL(s.url).pathname))}
+}
+export function createRuntime({resolve,fetchImpl=fetch,now=Date.now,ttlMs=300000,refreshAheadMs=90000,activeMs=600000,onEvent=()=>{},auto=true}={}){
+  if(typeof resolve!=='function' || ttlMs<1000 || refreshAheadMs<=0 || refreshAheadMs>=ttlMs)throw new Error('Invalid resolver/cache configuration')
+  const entries=new Map(),prefix=randomBytes(4).toString('hex'),controller=new AbortController()
+  let serial=Promise.resolve(),counter=0,closed=false,epoch=0
+  function entry(id){
+    if(!samples.some(s=>s.id===id))throw fail('未知影视样本','NOT_FOUND')
+    if(!entries.has(id))entries.set(id,{id,generations:new Map(),lastAccess:-Infinity,refreshCount:0})
+    return entries.get(id)
+  }
+  function emit(event){try{Promise.resolve(onEvent({...event,at:now()})).catch(()=>{})}catch{}}
+  function refresh(id,{reason='manual',failedVersion,manual=false}={}){
+    const e=entry(id)
+    if(closed)return Promise.reject(fail('测试服务已停止'))
+    if(failedVersion && e.current && e.current.version!==failedVersion && e.current.expiresAt>now() && !e.revoked)return Promise.resolve(e.current)
+    if(e.pending)return e.pending
+    if(!manual && e.retryAt>now())return Promise.reject(fail(e.lastError||'官方解析暂不可用',e.revoked?'NOT_AUTHORIZED':'UNAVAILABLE'))
+    const startedEpoch=epoch
+    const task=serial.catch(()=>{}).then(async()=>{
+      if(closed)throw fail('测试服务已停止')
+      emit({id,reason,outcome:'started'})
+      try{
+        const sample=samples.find(s=>s.id===id),result=await resolve(sample,{signal:controller.signal})
+        if(closed||startedEpoch!==epoch)throw fail('账号授权已变化，请重新播放','AUTH_REQUIRED')
+        const parsed=parseManifest(result.text,sample.expectedSeconds)
+        const issued=now(),value={...parsed,id,officialPage:sample.url,version:prefix+'-'+(++counter),createdAt:issued,expiresAt:issued+ttlMs,renewAt:issued+ttlMs-refreshAheadMs,lastAccess:issued,checks:result.checks||[],danmaku:result.danmaku||null}
+        value.byIdentity=new Map(value.segments.map(s=>[s.identity,s]))
+        e.current=value;e.generations.set(value.version,value);e.revoked=false;e.retryAt=0;e.lastError='';e.refreshCount++;e.lastReason=reason
+        emit({id,reason,outcome:'success',version:value.version,expiresAt:value.expiresAt,segments:value.segments.length})
+        return value
+      }catch(error){
+        e.lastError=error.code==='NOT_AUTHORIZED'?'官方只获试看或登录权益不足；未发布播放清单':'官方解析暂未完成，请稍后重试'
+        e.retryAt=now()+30000
+        if(error.code==='NOT_AUTHORIZED')e.revoked=true
+        emit({id,reason,outcome:'failed',code:error.code||'UNAVAILABLE'})
+        throw fail(e.lastError,error.code||'UNAVAILABLE')
+      }
+    })
+    serial=task.catch(()=>{})
+    e.pending=task.finally(()=>{e.pending=null})
+    return e.pending
+  }
+  async function get(id){
+    const e=entry(id);e.lastAccess=now()
+    if(e.revoked && e.retryAt>now())throw fail(e.lastError,'NOT_AUTHORIZED')
+    if(e.current && !e.revoked && e.current.expiresAt>now()){
+      if(e.current.renewAt<=now() && !e.pending && !(e.retryAt>now()))refresh(id,{reason:'refresh-ahead'}).catch(()=>{})
+      return e.current
+    }
+    return refresh(id,{reason:e.current?'expired':'cold-start'})
+  }
+  async function manifest(id){
+    const value=await get(id);value.lastAccess=now()
+    const text=value.lines.map(line=>line.segment!==undefined?`/media/${id}/${value.version}/${line.segment}.ts`:line.text).join('\n')
+    // Full, ENDLIST-verified VOD must be recognizable from a bounded head read.
+    // Long films can put ENDLIST beyond a player's 64 KiB probe window.
+    return text.replace(/^#EXT-X-PLAYLIST-TYPE:.*\r?\n?/gm,'').replace('#EXTM3U','#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD')
+  }
+  function targetFor(segment,current){
+    const match=current.byIdentity.get(segment.identity)
+    if(match)return match.url
+    const old=validateMedia(segment.url)
+    if(!current.paths.has(old.pathname) || [...old.searchParams.keys()].some(k=>!stableKeys.includes(k)))throw fail('清晰度或分片结构已变化，请重新加载播放清单','SEGMENT_CHANGED')
+    // Keep the original generation's file and byte range. Only update its CDN
+    // using a newly verified, full authorization for this same fixed sample.
+    return new URL(old.pathname+old.search,current.origins[0]).href
+  }
+  async function media(id,version,index,{method='GET',range,signal}={}){
+    const e=entry(id),generation=e.generations.get(version)
+    const segment=generation?.segments[index]
+    if(!segment)throw fail('播放清单已失效，请重新打开','NOT_FOUND')
+    let current=await get(id)
+    generation.lastAccess=now()
+    async function request(value){
+      if(signal?.aborted)throw fail('客户端已断开')
+      const response=await fetchImpl(targetFor(segment,value),{method,headers:{Referer:value.officialPage,'User-Agent':'Mozilla/5.0',...(range?{Range:range}:{})},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(30000)]):AbortSignal.timeout(30000)})
+      return response
+    }
+    let response
+    try{response=await request(current)}catch(error){if(signal?.aborted || error.code==='SEGMENT_CHANGED')throw error}
+    const invalid=r=>!r || [401,403,404,405,410].includes(r.status) || (r.ok && /json|html|xml/.test(r.headers.get('content-type')||''))
+    if(invalid(response)){
+      await response?.body?.cancel().catch(()=>{})
+      emit({id,outcome:'media-retry',reason:response?'http-'+response.status:'network',version})
+      current=await refresh(id,{reason:'upstream-refused',failedVersion:current.version})
+      response=await request(current)
+      if(invalid(response)){
+        await response?.body?.cancel().catch(()=>{})
+        e.retryAt=now()+30000;e.lastError='官方分片续期后仍不可用，请稍后重试'
+        throw fail(e.lastError)
+      }
+    }
+    if(e.revoked || current.expiresAt<=now()){
+      await response.body?.cancel().catch(()=>{})
+      throw fail(e.revoked?'当前没有完整观看权限；已停止供流':'授权缓存已到期，请重新核验',e.revoked?'NOT_AUTHORIZED':'UNAVAILABLE')
+    }
+    return response
+  }
+  function status(){return samples.map(sample=>{
+    const e=entries.get(sample.id),v=e?.current
+    return {id:sample.id,url:sample.url,title:sample.title,seconds:sample.expectedSeconds,state:e?.revoked?'denied':v&&v.expiresAt>now()?'ready':e?.lastError?'failed':v?'expired':'unresolved',resolving:!!e?.pending,version:v?.version||null,refreshedAt:v?.createdAt||null,expiresAt:v?.expiresAt||null,nextRefreshAt:v?.renewAt||null,refreshCount:e?.refreshCount||0,lastReason:e?.lastReason||null,lastError:e?.lastError||'',ttlMs,refreshAheadMs}
+  })}
+  async function tick(){
+    const jobs=[]
+    for(const [id,e] of entries){
+      for(const [version,g] of e.generations)if(g!==e.current && g.lastAccess<now()-1800000)e.generations.delete(version)
+      if(e.current && e.lastAccess>now()-activeMs && e.current.renewAt<=now() && !e.pending && !(e.retryAt>now()))jobs.push(refresh(id,{reason:'refresh-ahead'}))
+    }
+    await Promise.allSettled(jobs)
+  }
+  const timer=auto?setInterval(()=>{void tick()},5000):null
+  timer?.unref()
+  async function verify(id){
+    const e=entry(id)
+    if(e.revoked && e.retryAt>now())throw fail(e.lastError,'NOT_AUTHORIZED')
+    if(e.current && !e.revoked && e.current.expiresAt>now())return e.current
+    return refresh(id,{reason:'playlist-verification'})
+  }
+  return {reset(){epoch++;entries.clear()},get,verify,manifest,media,status,tick,refresh:(id)=>{entry(id).lastAccess=now();return refresh(id,{reason:'manual',manual:true})},async close(){closed=true;clearInterval(timer);controller.abort();await serial}}
+}
