@@ -97,9 +97,17 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     return { status: 'authenticated', authenticated: true, entitled: true, message: `已确认完整观看权限：${event.title}` }
   }
   async function action(fn) {
-    if (busy || pages) throw new Error('爱奇艺正在进行登录或播放解析，请稍候')
+    if (busy) throw new Error('爱奇艺正在处理另一个登录操作，请稍候')
     busy = true
-    try { return await fn() } finally { busy = false }
+    try {
+      // Pause background eligibility probes, then let their in-flight pages finish.
+      const deadline = Date.now() + 40000
+      while (pages) {
+        if (Date.now() >= deadline) throw new Error('爱奇艺当前播放解析尚未完成，请稍候')
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      return await fn()
+    } finally { busy = false }
   }
   const flow = {
     status: snapshot,

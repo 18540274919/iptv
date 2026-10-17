@@ -110,7 +110,7 @@ test('registered account module emits proxy HLS refs without signed media URLs o
   assert.equal(resolverFor('iqiyi-sports-1200050820'), module)
   assert.equal(resolverFor('iqiyi-sports-1200050820/extra'), null)
   assert.equal(module.category, 'account')
-  const result = await module.fetch({}, { catalog: { discover: async () => ({ events: [event], warnings: [] }) } })
+  const result = await module.fetch({}, { filterPlayable: async items => ({ items, warnings: [], skipped: [] }), catalog: { discover: async () => ({ events: [event], warnings: [] }) } })
   const channel = result.groups[0].dataList[0]
   assert.equal(channel.proxyHls, true); assert.equal(channel.catchup, 'none'); assert.equal(channel.logo, '')
   assert.equal(channel.deferredRef, 'iqiyi-sports-1200050820'); assert.equal(channel.url, undefined)
@@ -211,7 +211,7 @@ test('VOD cards use explicit replay/highlight markers, deduplicate video IDs, re
   assert.equal(replay.id, 'vod-' + replayJump.qipuid)
   assert.equal(eventName(replay), '[回放] 10月14日 朗斯vs葡萄牙体育')
   assert.match(eventName(event), /^\[直播\]/)
-  const moduleResult = await module.fetch({}, { catalog: { discover: async () => ({ events: [event], vods: result, warnings: [] }) } })
+  const moduleResult = await module.fetch({}, { filterPlayable: async items => ({ items, warnings: [], skipped: [] }), catalog: { discover: async () => ({ events: [event], vods: result, warnings: [] }) } })
   assert.equal(moduleResult.groups.length, 1); assert.equal(moduleResult.groups[0].name, '爱奇艺体育')
   assert.equal(moduleResult.groups[0].dataList.length, 3)
   assert.equal(moduleResult.groups[0].dataList[1].deferredRef, 'iqiyi-sports-vod-' + replayJump.qipuid)
@@ -302,4 +302,88 @@ test('browser status API preserves content entitlement separately from login and
     assert.equal(result.success, true); assert.equal(result.data.authenticated, true)
     assert.equal(result.data.entitled, false); assert.equal(result.data.secret, undefined)
   } finally { module.browserLoginFlow.status = original }
+})
+
+test('eligibility hides previews and network-unknown entries, caches checks and rechecks after account changes', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let clock = 0, calls = 0, changed = false
+  const items = ['allowed', 'preview', 'timeout'].map(id => ({ id, kind: 'replay' }))
+  const filter = createEligibility({ now: () => clock, delay: async () => {}, probe: async item => {
+    calls++
+    return { status: item.id === 'timeout' ? 'unknown' : item.id === 'allowed' && !changed ? 'allowed' : 'denied', reason: '仅获试看' }
+  } })
+  let result = await filter.filter(items, { waitMs: 100 })
+  assert.deepEqual(result.items.map(i => i.id), ['allowed'])
+  assert.equal(result.skipped.length, 1); assert.equal(result.unknown, 1)
+  await filter.filter(items, { waitMs: 100 }); assert.equal(calls, 3)
+  clock += 60001
+  await filter.filter(items, { waitMs: 100 }); assert.equal(calls, 4, '网络检查失败只短期缓存，不永久当作无权')
+  changed = true; filter.reset()
+  result = await filter.filter(items, { waitMs: 100 })
+  assert.equal(result.items.length, 0); assert.equal(result.skipped.length, 2)
+  await filter.shutdown()
+})
+test('eligibility ignores in-flight results from the previous account and does not duplicate active probes', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let finishOld, calls = 0
+  const gate = new Promise(resolve => { finishOld = resolve })
+  const filter = createEligibility({ delay: async () => {}, probe: async () => ++calls === 1 ? gate : { status: 'denied', reason: '新账号无权' } })
+  const items = [{ id: 'vod-123', kind: 'replay' }]
+  await filter.filter(items, { waitMs: 0 })
+  await filter.filter(items, { waitMs: 0 }); assert.equal(calls, 1)
+  filter.reset()
+  await filter.filter(items, { waitMs: 0 })
+  finishOld({ status: 'allowed' })
+  await new Promise(resolve => setImmediate(resolve))
+  const result = await filter.filter(items, { waitMs: 100 })
+  assert.equal(result.items.length, 0); assert.equal(result.skipped.length, 1)
+  assert.equal(calls, 2)
+  await filter.shutdown()
+})
+test('a transient failed recheck never republishes an expired positive result', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let clock = 0, fail = false
+  const filter = createEligibility({ now: () => clock, probe: async () => { if (fail) throw new Error('timeout'); return { status: 'allowed' } } })
+  const item = { id: 'live-1' }
+  assert.equal((await filter.filter([item], { waitMs: 100 })).items.length, 1)
+  clock += 120001; fail = true
+  const result = await filter.filter([item], { waitMs: 100 })
+  assert.equal(result.items.length, 0); assert.equal(result.unknown, 1)
+  await filter.shutdown()
+})
+test('the production module outputs only streams verified as complete, including free-labelled content', async () => {
+  const vods = normalizeVods(catalogBody([endedCard]))
+  const good = vods[0], bad = vods[1]
+  const auth = { revision: () => 0, flow: { status: () => ({}) }, shutdown: async () => {}, capture: async item => vodCapture(item, item.id === bad.id ? { duration: 180 } : {}) }
+  const catalog = { discover: async () => ({ events: [], vods, warnings: [] }) }
+  const runtime = createRuntime({ catalog, auth, eligibilityWaitMs: 1000 })
+  const result = await module.fetch({}, { catalog, filterPlayable: runtime.filterPlayable })
+  assert.deepEqual(result.groups[0].dataList.map(c => c.deferredRef), ['iqiyi-sports-' + good.id])
+  assert.equal(result.meta.skipped.length, 1, '免费标签也不能让不完整片段漏过过滤')
+  await runtime.shutdown()
+  const missing = await module.fetch({}, { catalog: { discover: async () => { throw new Error('offline') } } })
+  assert.equal(missing.groups[0].dataList.length, 0)
+  assert.match(missing.meta.warnings[0], /未核验/)
+})
+
+test('clearing an unused eligibility cache never starts production scans or publishes callbacks', async () => {
+  const { createEligibility } = await import('../extractors/iqiyi-sports/eligibility.js')
+  let updates = 0
+  const filter = createEligibility({ probe: async () => { throw new Error('not requested') }, onUpdate: () => { updates++ } })
+  filter.reset()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(updates, 0)
+  await filter.shutdown()
+})
+
+test('playback and background renewal refusals immediately remove a formerly allowed entry', async () => {
+  const { state, runtime } = setup()
+  await runtime.resolve('iqiyi-sports-' + event.id)
+  assert.equal((await runtime.filterPlayable([event])).items.length, 1)
+  state.data.bossRet = { code: 'A00000', previewTime: 180, data: { prv: '1' } }
+  state.clock += 150001
+  await runtime.resolve('iqiyi-sports-' + event.id)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal((await runtime.filterPlayable([event])).items.length, 0)
+  await runtime.shutdown()
 })

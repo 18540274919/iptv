@@ -1,7 +1,8 @@
 import { createCatalog, officialFetch, selectAuthorizedMedia, checkManifest, validateMediaUrl, claimsRef } from './api.js'
+import { createEligibility } from './eligibility.js'
 import { createBrowserAuth } from './auth.js'
 
-export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = officialFetch, now = Date.now } = {}) {
+export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = officialFetch, now = Date.now, onFilterUpdate, eligibilityWaitMs = 5000 } = {}) {
   auth ||= createBrowserAuth({ getEvent: async () => {
     // Free rooms prove nothing about the account; only member rooms can verify login.
     const { events, vods = [] } = await catalog.discover()
@@ -9,7 +10,25 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
   } })
   const tickets = new Map(), pending = new Map()
   let rejected = '', revision = auth.revision(), capturing = false
-  const clear = () => tickets.clear()
+  const eligibility = createEligibility({ now, onUpdate: onFilterUpdate,
+    isPaused: () => capturing || auth.flow.status().active || auth.flow.status().status === 'waiting',
+    probe: async event => {
+      try {
+        const captured = await auth.capture(event)
+        const result = selectAuthorizedMedia(captured, event)
+        if (!event.kind && captured.data.id && String(captured.data.id) !== event.qipuId) throw new Error('官方播放房间与目录不一致')
+        await manifest({ ...result, referer: event.officialPage })
+        return { status: 'allowed' }
+      } catch (error) {
+        if (error.credential || /DRM|加密|H\.264|CDN|不一致/.test(error.message)) return { status: 'denied', reason: error.message }
+        return { status: 'unknown', reason: '官方权限核验未完成，请稍后重试' }
+      }
+    },
+  })
+  const clear = () => { tickets.clear(); eligibility.reset() }
+  function syncRevision() {
+    if (auth.revision() !== revision) { clear(); revision = auth.revision(); rejected = '' }
+  }
   // Re-check authorization off the manifest path: a browser capture takes seconds and
   // would stall players if it ran inside a manifest poll. Hard expiry stays at four minutes.
   function renewSoon(event, cached) {
@@ -17,11 +36,12 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
     ticket(event, true).catch(error => {
       if (!error.credential) return
       rejected = error.message
+      eligibility.record(event, 'denied', error.message)
       if (tickets.get(event.id) === cached) tickets.delete(event.id)
     })
   }
   async function ticket(event, force = false) {
-    if (auth.revision() !== revision) { clear(); revision = auth.revision(); rejected = '' }
+    syncRevision()
     const cached = tickets.get(event.id)
     if (!force && cached?.expiresAt > now()) {
       if (cached.renewAt <= now() && !pending.has(event.id) && !capturing) renewSoon(event, cached)
@@ -52,14 +72,18 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
   return {
     catalog,
     clear,
+    async filterPlayable(items) { syncRevision(); return eligibility.filter(items, { waitMs: eligibilityWaitMs }) },
     credentialRejected: () => rejected || (auth.flow.status().status === 'error' ? auth.flow.status().message : ''),
     browserLoginFlow: Object.fromEntries(['status', 'start', 'check', 'import', 'cancel', 'close'].map(method => [method, async (...args) => {
       const result = await auth.flow[method](...args)
+      syncRevision()
+      if (method === 'start') eligibility.reset()
       if (result.authenticated && result.entitled !== false) rejected = ''
       return result
     }])),
     async resolve(ref) {
       if (!claimsRef(ref)) return { url: '', desc: '未知的爱奇艺体育赛事引用' }
+      let selectedEvent
       try {
         const id = ref.slice('iqiyi-sports-'.length)
         // Manifest polls take the cached catalog and refresh it in the background; only
@@ -68,22 +92,31 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
         let event = find(await catalog.discover({ allowStale: true }))
         if (!event) event = find(await catalog.discover())
         if (!event) return { url: '', desc: '此内容已结束或不在官方直播及点播目录中' }
+        selectedEvent = event
         let result = await ticket(event), hls
         try { hls = await manifest(result) }
         catch (error) {
           if (!error.renew) throw error
           tickets.delete(event.id); result = await ticket(event); hls = await manifest(result)
         }
+        // A background recheck may have rejected/deleted this older ticket while
+        // its manifest was being read. Do not let the old success undo the denial.
+        if (tickets.get(event.id) === result) eligibility.record(event, 'allowed')
         return { url: result.url, desc: `${event.title} · ${result.size}${!event.kind && result.bid === 610 ? ' · 50帧档' : ''}`,
           manifestText: hls.text, manifestUrl: hls.url,
           upstreamHeaders: target => { validateMediaUrl(target); return { Referer: event.officialPage, 'User-Agent': 'Mozilla/5.0' } },
           upstreamUrlTransform: validateMediaUrl }
       } catch (error) {
         if (error.credential) rejected = error.message
+        if (selectedEvent) eligibility.record(selectedEvent, error.credential || /DRM|加密|H\.264|CDN|不一致/.test(error.message) ? 'denied' : 'unknown', '播放权限或媒体核验未通过，暂不显示')
         return { url: '', desc: String(error.message).replace(/https?:\/\/\S+/g, '[官方地址]') }
       }
     },
-    async shutdown() { clear(); await auth.shutdown() },
+    async shutdown() { await eligibility.shutdown(); tickets.clear(); await auth.shutdown() },
   }
 }
-export const runtime = createRuntime()
+export const runtime = createRuntime({ onFilterUpdate: async () => {
+  // Lazy import keeps the extractor independent of manager initialization.
+  const { runExtractorNowAPI } = await import('../../utils/extractorsAPI.js')
+  runExtractorNowAPI('iqiyi-sports')
+} })
