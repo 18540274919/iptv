@@ -25,7 +25,7 @@ const rows = [
   ['jn', 556, '金牛电视台', '金牛区有线电视台', 'jntv'],
   ['qy', 910, '青羊电视台', '青羊区融媒体中心', 'qingyang'],
   ['jj', 1541, '锦江电视', '锦江电视', 'jinjiang'],
-  ['gx', 722, '高新电视台', '高新电视台', 'gaoxin'],
+  ['gx', 722, '成都高新电视台', '高新电视台', 'gaoxin'],
   ['cz', 1257, '崇州电视台', '崇州电视台', 'chongzhou'],
   ['djy', 1314, '都江堰电视台', '都江堰电视台', 'dujiangyan'],
   ['xj', 760, '新津电视台', '新津电视台', 'xinjin'],
@@ -37,14 +37,11 @@ const rows = [
 export const CHANNELS = Object.freeze(rows.map(([id, code, name, rawName, stream]) => {
   const main = !stream
   const base = id === 'cdrcxf' ? 'dangjiao' : id
-  const file = id === 'cdrcxf' ? 'dangjiao' : id.toUpperCase()
   return Object.freeze({
     id, code, name, rawName, main, ref: `chengdu-${id}`,
     logo: OFFICIAL_LOGOS[rawName]?.url || '',
-    host: main ? 'cdn1.cditv.cn' : id === 'jn' ? 'jntv.pull.cditv.cn' : 'quxian.pull.cditv.cn',
-    paths: Object.freeze(main
-      ? [`/${base}high/${file}High.flv/playlist.m3u8`, `/${base}/${file}.flv/playlist.m3u8`]
-      : [`/live/${stream}.flv/playlist.m3u8`]),
+    // 官方 CDN 主机与路径会调整，地址校验只认 cditv.cn 域；streamKeys 用于防止拿到别台地址。
+    streamKeys: Object.freeze(main ? [base, `${base}high`] : [stream]),
   })
 }))
 

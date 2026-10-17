@@ -9,8 +9,17 @@ import { packLogoUrl } from '../utils/logoPack.js'
 
 const main = CHANNELS[0]
 const county = CHANNELS.find(channel => channel.id === 'jy')
-const urlFor = (channel, token = 'fake', path = channel.paths[0], protocol = 'https:') =>
-  `${protocol}//${channel.host}${path}?wsSecret=${token}&wsTime=ffffffff`
+// 2026-10-17 官方响应里的主机与路径形态；模块本身只校验 cditv.cn 域与频道标识。
+const sampleHost = channel => channel.main ? 'cdn1.cditv.cn' : channel.id === 'jn' ? 'jntv.pull.cditv.cn' : 'quxian.pull.cditv.cn'
+const samplePaths = channel => {
+  const [key, high] = channel.streamKeys
+  const file = key === 'dangjiao' ? key : key.toUpperCase()
+  return channel.main
+    ? [`/${high}/${file}High.flv/playlist.m3u8`, `/${key}/${file}.flv/playlist.m3u8`]
+    : [`/live/${key}.flv/playlist.m3u8`]
+}
+const urlFor = (channel, token = 'fake', path = samplePaths(channel)[0], protocol = 'https:', host = sampleHost(channel)) =>
+  `${protocol}//${host}${path}?wsSecret=${token}&wsTime=ffffffff`
 const payload = (data, extra = {}) => ({ state: true, result: 1, code: 0, data, ...extra })
 const response = data => new Response(JSON.stringify(payload(data)))
 
@@ -47,7 +56,7 @@ test('只认领确切频道引用，裸短名与其它模块不冲突', async ()
 })
 
 test('新版官网频道图进入目录，27 路均有本机内置台标兜底', async () => {
-  assert.ok(chengdu.catalogVersion >= 3, '移除频道后旧目录缓存必须重建')
+  assert.equal(chengdu.catalogVersion, 1, '模块未发布过，目录版本从 1 起')
   const rows = (await chengdu.fetch()).groups[0].dataList
   assert.equal(rows.filter(row => row.logo).length, 24)
   for (const row of rows) {
@@ -68,8 +77,8 @@ test('主频道优先高清并升级 HTTPS；缺高清时用标清；每次播�
     assert.equal(options.redirect, 'manual')
     assert.ok(options.signal instanceof AbortSignal)
     return response({
-      android_HDlive_url: hd ? urlFor(main, token, main.paths[0], 'http:') : '',
-      android_url: urlFor(main, token, main.paths[1], 'http:'),
+      android_HDlive_url: hd ? urlFor(main, token, samplePaths(main)[0], 'http:') : '',
+      android_url: urlFor(main, token, samplePaths(main)[1], 'http:'),
     })
   } })
   const first = await resolver.resolve(main.ref)
@@ -79,27 +88,54 @@ test('主频道优先高清并升级 HTTPS；缺高清时用标清；每次播�
   token = 'second'
   assert.equal((await resolver.resolve(main.ref)).url, urlFor(main, 'second'))
   hd = false
-  assert.equal((await resolver.resolve(main.ref)).url, urlFor(main, token, main.paths[1]))
+  assert.equal((await resolver.resolve(main.ref)).url, urlFor(main, token, samplePaths(main)[1]))
   assert.equal(calls, 3, '只请求 JSON 接口，不预取调度清单或媒体')
 })
 
 test('区县使用 android_url 并保留官方协议；蓉城先锋与金牛使用各自路径', async () => {
   const resolver = createResolver({ fetchImpl: async () => response({
-    android_HDlive_url: urlFor(main), android_url: urlFor(county, 'county', county.paths[0], 'http:'),
+    android_HDlive_url: urlFor(main), android_url: urlFor(county, 'county', undefined, 'http:'),
   }) })
-  assert.equal((await resolver.resolve(county.ref)).url, urlFor(county, 'county', county.paths[0], 'http:'))
-  for (const channel of CHANNELS) assert.equal(officialPlayUrl(urlFor(channel), channel), urlFor(channel))
-  assert.equal(CHANNELS.find(channel => channel.id === 'cdrcxf').paths[0], '/dangjiaohigh/dangjiaoHigh.flv/playlist.m3u8')
-  assert.equal(CHANNELS.find(channel => channel.id === 'jn').host, 'jntv.pull.cditv.cn')
+  assert.equal((await resolver.resolve(county.ref)).url, urlFor(county, 'county', undefined, 'http:'))
+  for (const channel of CHANNELS) {
+    for (const path of samplePaths(channel)) assert.equal(officialPlayUrl(urlFor(channel, 'x', path), channel), urlFor(channel, 'x', path))
+  }
+  assert.equal(samplePaths(CHANNELS.find(channel => channel.id === 'cdrcxf'))[0], '/dangjiaohigh/dangjiaoHigh.flv/playlist.m3u8')
+})
+
+test('官方换 CDN 子域或路径形态仍可用，只要在 cditv.cn 域内且频道标识一致', () => {
+  for (const host of ['cditv.cn', 'cdn2.cditv.cn', 'new.pull.cditv.cn', 'CDN1.CDITV.CN']) {
+    const url = urlFor(main, 'x', undefined, 'https:', host)
+    assert.equal(officialPlayUrl(url, main), new URL(url).href)
+  }
+  assert.ok(officialPlayUrl(urlFor(main, 'x', '/cdtv1high/index.m3u8'), main))
+  assert.ok(officialPlayUrl(urlFor(county, 'x', '/live/jianyang.flv/playlist.m3u8', 'https:'), county))
+})
+
+test('高清地址不合规时退回标清，两者都不合规才报错', async () => {
+  const resolve = data => createResolver({ fetchImpl: async () => response(data) }).resolve(main.ref)
+  const sd = urlFor(main, 'sd', samplePaths(main)[1], 'http:')
+  for (const badHd of ['https://evil.example/cdtv1high/CDTV1High.flv/playlist.m3u8?wsSecret=x&wsTime=1',
+    urlFor(main, 'hd').split('?')[0], 'not a url']) {
+    const result = await resolve({ android_HDlive_url: badHd, android_url: sd })
+    assert.equal(result.url, urlFor(main, 'sd', samplePaths(main)[1]))
+  }
+  const failed = await resolve({ android_HDlive_url: 'https://evil.example/a.m3u8', android_url: 'https://evil.example/b.m3u8' })
+  assert.equal(failed.url, '')
+  assert.match(failed.desc, /不符合频道配置/)
 })
 
 test('拒绝非官方、跨频道、无签名与非 HTTP 地址', () => {
   const good = urlFor(main)
   for (const bad of [
-    good.replace(main.host, 'evil.example'), good.replace(main.host, main.host + '.evil.example'),
-    good.replace('https:', 'file:'), good.replace(main.host, `user:pass@${main.host}`),
-    good.replace(main.host, main.host + ':8080'), good + '#fragment', good.split('?')[0],
-    good.replace('cdtv1high', 'cdtv2high'), urlFor(county), 'not a url',
+    good.replace('cdn1.cditv.cn', 'evil.example'), good.replace('cdn1.cditv.cn', 'cdn1.cditv.cn.evil.example'),
+    good.replace('cdn1.cditv.cn', 'evilcditv.cn'), good.replace('cdn1.cditv.cn', 'cditv.cn.evil.example'),
+    good.replace('https:', 'file:'), good.replace('https:', 'ftp:'), good.replace('cdn1.cditv.cn', 'user:pass@cdn1.cditv.cn'),
+    good.replace('cdn1.cditv.cn', 'cdn1.cditv.cn:8080'), good + '#fragment', good.split('?')[0],
+    good.replace('wsTime=ffffffff', 'x=1'), good.replace('wsSecret=fake&', ''),
+    good.replace('playlist.m3u8', 'playlist.mp4'), good.replace('cdtv1high', 'cdtv2high'),
+    urlFor(main, 'x', '/live/playlist.m3u8'), urlFor(main, 'x', '/playlist.m3u8'),
+    urlFor(county), urlFor(CHANNELS.find(channel => channel.id === 'cdtv2')), 'not a url',
   ]) assert.throws(() => officialPlayUrl(bad, main))
 })
 

@@ -235,6 +235,15 @@
    "updated": "2026-10-17",
    "width": 256
   },
+  "成都高新电视台": {
+   "file": "成都高新电视台.png",
+   "hash": "2a1d25304a",
+   "height": 72,
+   "origin": "chengdu",
+   "source": "https://cmsimg.cditv.cn/2022/12/13/76aef683-888e-41bd-a71e-7366528af822.png",
+   "updated": "2026-10-17",
+   "width": 72
+  },
   "成都公共": {
    "file": "成都公共.png",
    "hash": "5be065d64d",
@@ -321,6 +330,7 @@
    "hash": "d28a493cf2",
    "height": 79,
    "kind": "library",
+   "note": "官方旧图床不可用；从 taksssss/tv 台标资料库手工收录（已按实际播出画面核对为 CZM 标志），不接入外部台标库。",
    "origin": "manual",
    "source": "https://github.com/taksssss/tv/blob/main/icon/%E5%9B%9B%E5%B7%9D%E5%B4%87%E5%B7%9E.png",
    "updated": "2026-10-17",
@@ -614,15 +624,6 @@
    "source": "https://www.rthk.hk/timetable/tv31",
    "updated": "2026-09-25",
    "width": 256
-  },
-  "高新电视台": {
-   "file": "高新电视台.png",
-   "hash": "2a1d25304a",
-   "height": 72,
-   "origin": "chengdu",
-   "source": "https://cmsimg.cditv.cn/2022/12/13/76aef683-888e-41bd-a71e-7366528af822.png",
-   "updated": "2026-10-17",
-   "width": 72
   },
   "公视高清": {
    "file": "公视高清.png",
@@ -4857,7 +4858,7 @@
   "chengdu/chengdu-cz": "崇州电视台",
   "chengdu/chengdu-djy": "都江堰电视台",
   "chengdu/chengdu-dy": "大邑综合",
-  "chengdu/chengdu-gx": "高新电视台",
+  "chengdu/chengdu-gx": "成都高新电视台",
   "chengdu/chengdu-jj": "锦江电视",
   "chengdu/chengdu-jn": "金牛电视台",
   "chengdu/chengdu-jt": "金堂电视台",

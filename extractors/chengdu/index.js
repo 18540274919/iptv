@@ -6,7 +6,7 @@ export default {
   name: '成都',
   description: '成都六套电视、蓉城先锋及 20 路区县频道，共 27 路；免登录，播放时获取官方签名地址，默认 302 跳转、播放器直连。',
   capabilities: { cache: 'disk', resolve: true, epg: true, catchup: false },
-  catalogVersion: 3,
+  catalogVersion: 1,
   outputGroupName: '四川',
   defaultRefreshMinutes: 1440,
   refreshConfigurable: false,

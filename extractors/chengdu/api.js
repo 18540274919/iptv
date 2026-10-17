@@ -6,11 +6,21 @@ export { CHANNELS }
 export const API_BASE = 'https://mob.api.cditv.cn/show/'
 const MAX_TEXT_BYTES = 512 * 1024
 
+const OFFICIAL_HOST = /(^|\.)cditv\.cn$/
+
+/** 路径里带频道标识的段（去掉扩展名，忽略 live 与末尾的清单文件名）必须都属于本频道。 */
+function matchesChannel(pathname, channel) {
+  const keys = pathname.split('/').slice(1, -1).map(part => part.split('.')[0].toLowerCase())
+    .filter(part => part && part !== 'live')
+  return keys.length > 0 && keys.every(key => channel.streamKeys.includes(key))
+}
+
 export function officialPlayUrl(raw, channel) {
   let url
   try { url = new URL(raw) } catch { throw new Error('官方播放地址无效') }
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password
-      || url.port || url.hash || url.hostname !== channel.host || !channel.paths.includes(url.pathname)
+      || url.port || url.hash || !OFFICIAL_HOST.test(url.hostname) || !url.pathname.endsWith('.m3u8')
+      || !matchesChannel(url.pathname, channel)
       || !url.searchParams.get('wsSecret') || !url.searchParams.get('wsTime')) {
     throw new Error('官方播放地址不符合频道配置')
   }
@@ -24,9 +34,14 @@ export function playUrlFromPayload(payload, channel) {
     throw new Error('官方接口当前没有可用频道数据')
   }
   const data = payload.data
-  const raw = (channel.main && data.android_HDlive_url) || data.android_url
-  if (!raw) throw new Error('官方接口当前没有直播地址')
-  return officialPlayUrl(raw, channel)
+  const candidates = [channel.main && data.android_HDlive_url, data.android_url].filter(Boolean)
+  if (!candidates.length) throw new Error('官方接口当前没有直播地址')
+  // 高清地址不合规时退回标清，两者都不合规才报错。
+  let lastError
+  for (const raw of candidates) {
+    try { return officialPlayUrl(raw, channel) } catch (error) { lastError = error }
+  }
+  throw lastError
 }
 
 export async function requestPlayUrl(channel, { fetchImpl = proxyAwareFetch, timeoutMs = 8000 } = {}) {
