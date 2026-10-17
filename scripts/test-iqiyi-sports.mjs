@@ -16,9 +16,15 @@ const stream = (bid, bitrate, codeFormat = 2) => ({ bid, bitrate, codeFormat, sc
 const authorized = () => ({ id: event.qipuId, boss: 2, bossRet: { code: 'A00000', data: { prv: '0' } }, program: { liveDrmInfo: { drm: false } }, streams: [stream(600, '4000'), stream(610, '5500'), stream(610, '5500', 3)] })
 const hls = sequence => `#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:${sequence}\n#EXT-X-TARGETDURATION:4\n#EXTINF:4,\nhttps://spqcloudcdncnc.inter.71edge.com/sample-${sequence}.ts\n`
 function setup() {
-  const state = { clock: 1000000, captures: 0, manifests: 0, revision: 0, data: authorized(), events: [event] }
+  const state = { clock: 1000000, captures: 0, manifests: 0, accountChecks: 0, revision: 0, data: authorized(), events: [event] }
   const auth = { revision: () => state.revision, flow: Object.fromEntries(['status', 'check', 'start', 'import', 'close', 'cancel'].map(k => [k, () => ({ status: 'idle', authenticated: false })])),
-    async capture() { state.captures++; if (state.failure) throw state.failure; return { data: state.data, hasLogin: state.hasLogin !== false } }, shutdown: async () => {} }
+    async capture() { state.captures++; if (state.failure) throw state.failure; return { data: state.data, hasLogin: state.hasLogin !== false } },
+    // state.account: undefined = still valid, 'expired' = official P00100, 'unknown' = account API not answered.
+    async checkAccount() {
+      state.accountChecks++; await state.accountGate
+      if (state.account === 'expired') throw Object.assign(new Error('官方未确认账号登录有效，请重新登录'), { credential: true })
+      if (state.account === 'unknown') throw new Error('官方账号状态核验未完成，请稍后重试')
+    }, shutdown: async () => {} }
   const runtime = createRuntime({ auth, now: () => state.clock, catalog: { discover: async () => ({ events: state.events, warnings: [] }) },
     fetchImpl: async () => { state.manifests++; if (state.http403) { state.http403 = false; return new Response('', { status: 403 }) }; return new Response(state.encrypted ? '#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="license"\n' : hls(state.manifests)) } })
   return { state, runtime }
@@ -135,10 +141,10 @@ test('authorization is rechecked in the background before the four-minute hard e
   await new Promise(r => setImmediate(r))
   // Renewed ticket now serves; no foreground capture at the old four-minute mark.
   state.clock += 100000; await runtime.resolve('iqiyi-sports-' + event.id); assert.equal(state.captures, 2)
-  // Background recheck that lands on preview revokes the ticket and raises the alert.
-  state.clock += 60000; state.data = { ...authorized(), bossRet: { code: 'A00000', previewTime: 180, data: { prv: '1' } } }
+  // Background recheck that lands on preview revokes the ticket; the account API confirms the expired login and raises the alert.
+  state.clock += 60000; state.data = { ...authorized(), bossRet: { code: 'A00000', previewTime: 180, data: { prv: '1' } } }; state.account = 'expired'
   await runtime.resolve('iqiyi-sports-' + event.id); await new Promise(r => setImmediate(r))
-  assert.match(runtime.credentialRejected(), /试看/)
+  assert.match(runtime.credentialRejected(), /重新登录/)
   assert.equal((await runtime.resolve('iqiyi-sports-' + event.id)).url, '')
 })
 test('playback reads a stale catalog without waiting and refreshes it in the background', async () => {
@@ -156,13 +162,14 @@ test('playback reads a stale catalog without waiting and refreshes it in the bac
   clock += 700000; gate = Promise.resolve()
   await catalog.discover({ allowStale: true }); assert.equal(scans, 3)
 })
-test('preview is refused and reported; network errors do not masquerade as expired credentials; successful revalidation clears warning', async () => {
+test('preview on an expired login is refused and reported; network errors do not masquerade as expired credentials; successful revalidation clears warning', async () => {
   const { state, runtime } = setup()
-  state.data.bossRet = { code: 'A00000', previewTime: 180, data: { prv: '1' } }
+  state.data.bossRet = { code: 'A00000', previewTime: 180, data: { prv: '1' } }; state.account = 'expired'
   assert.equal((await runtime.resolve('iqiyi-sports-' + event.id)).url, '')
-  assert.match(runtime.credentialRejected(), /试看/)
+  await new Promise(r => setImmediate(r))
+  assert.match(runtime.credentialRejected(), /重新登录/)
   state.failure = new Error('network timeout')
-  await runtime.resolve('iqiyi-sports-' + event.id); assert.match(runtime.credentialRejected(), /试看/)
+  await runtime.resolve('iqiyi-sports-' + event.id); assert.match(runtime.credentialRejected(), /重新登录/)
   delete state.failure; state.data = authorized(); state.revision++
   assert.ok((await runtime.resolve('iqiyi-sports-' + event.id)).url); assert.equal(runtime.credentialRejected(), '')
   state.revision++; state.data.program.liveDrmInfo.drm = true
@@ -549,5 +556,84 @@ test('a valid account without rights to the chosen paid live room is not reporte
   assert.equal(expired.status, 'error'); assert.equal(expired.authenticated, false)
   assert.match(expired.message, /重新登录/)
   await assert.rejects(auth.flow.import('P00001=expired; QC005=fixture'), /未通过官方登录校验/)
+  await auth.shutdown()
+})
+
+// A still-valid account without this room's rights gets the same preview as an expired login.
+const previewRet = () => ({ code: 'A00000', previewTime: 180, data: { prv: '1' } })
+const settle = () => new Promise(resolve => setImmediate(resolve))
+const promptly = (promise, label) => {
+  let timer
+  return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(label)), 1000) })]).finally(() => clearTimeout(timer))
+}
+const ref = 'iqiyi-sports-' + event.id
+test('a playback preview on a still-valid account hides the entry without a login alert; the account check never holds the manifest poll and runs at most every ten minutes', async () => {
+  const { state, runtime } = setup()
+  let release
+  state.accountGate = new Promise(resolve => { release = resolve })
+  state.data.bossRet = previewRet()
+  const refused = await promptly(runtime.resolve(ref), '清单请求不能等账号页面加载')
+  assert.equal(refused.url, ''); assert.match(refused.desc, /试看/)
+  assert.equal(state.accountChecks, 1); assert.equal(runtime.credentialRejected(), '')
+  release(); await settle()
+  assert.equal(runtime.credentialRejected(), '', '账号有效、只是这场没有权益，不报登录失效')
+  assert.equal((await runtime.filterPlayable([event])).items.length, 0, '照常隐藏')
+  for (let i = 0; i < 3; i++) await runtime.resolve(ref)
+  assert.equal(state.accountChecks, 1, '播放器反复重试不反复开账号页')
+  state.clock += 10 * 60 * 1000
+  await runtime.resolve(ref); await settle()
+  assert.equal(state.accountChecks, 2); assert.equal(runtime.credentialRejected(), '')
+  await runtime.shutdown()
+})
+test('the login alert waits for the official account API to confirm an expired login; inconclusive checks and a previous account raise nothing', async () => {
+  const { state, runtime } = setup()
+  state.failure = new Error('network timeout'); await runtime.resolve(ref); delete state.failure
+  state.data.program.liveDrmInfo.drm = true; await runtime.resolve(ref); state.data = authorized()
+  assert.equal(state.accountChecks, 0, '网络和 DRM 错误不问账号接口')
+  state.data.bossRet = previewRet(); state.account = 'unknown'
+  await runtime.resolve(ref); await settle()
+  assert.equal(state.accountChecks, 1); assert.equal(runtime.credentialRejected(), '', '账号接口没答上来不算登录失效')
+  state.clock += 10 * 60 * 1000; state.account = 'expired'
+  await runtime.resolve(ref); await settle()
+  assert.match(runtime.credentialRejected(), /重新登录/)
+  state.failure = new Error('network timeout')
+  await runtime.resolve(ref); assert.match(runtime.credentialRejected(), /重新登录/, '之后的网络错误不清掉已确认的提醒')
+  delete state.failure
+  let release
+  state.accountGate = new Promise(resolve => { release = resolve })
+  state.revision++
+  await runtime.resolve(ref)
+  assert.equal(runtime.credentialRejected(), ''); assert.equal(state.accountChecks, 3, '换账号后不沿用十分钟间隔')
+  state.revision++; release(); await settle()
+  assert.equal(runtime.credentialRejected(), '', '旧账号的核验结果作废')
+  await runtime.shutdown()
+})
+test('a background renewal that lands on a preview revokes the ticket and alerts only for a confirmed expired login', async () => {
+  const { state, runtime } = setup()
+  await runtime.resolve(ref)
+  state.clock += 150001; state.data = { ...authorized(), bossRet: previewRet() }
+  assert.ok((await runtime.resolve(ref)).url, '复核在后台跑，当前清单照常返回')
+  await settle()
+  assert.equal(state.accountChecks, 1); assert.equal(runtime.credentialRejected(), '')
+  assert.equal((await runtime.resolve(ref)).url, '', '复核被拒后撤票')
+  state.data = authorized(); state.account = 'expired'; state.clock += 10 * 60 * 1000
+  assert.ok((await runtime.resolve(ref)).url); assert.equal(state.accountChecks, 1)
+  state.clock += 150001; state.data = { ...authorized(), bossRet: previewRet() }
+  await runtime.resolve(ref); await settle()
+  assert.equal(state.accountChecks, 2); assert.match(runtime.credentialRejected(), /重新登录/)
+  await runtime.shutdown()
+})
+test('the account helper reads the saved profile, treats only official P00100 as expired and stays out of the login window', async () => {
+  let code = 'A00000', evaluations = 0
+  const page = { on: () => {}, close: async () => {}, goto: async () => {}, isClosed: () => false, setViewport: async () => {}, bringToFront: async () => {},
+    evaluate: async () => { evaluations++; return code === 'down' ? { ok: false, code: '', hasUser: false } : { ok: true, code, hasUser: code === 'A00000' } } }
+  const browser = { connected: true, on: () => {}, newPage: async () => page, defaultBrowserContext: () => ({ newPage: async () => page }) }
+  const auth = createBrowserAuth({ getEvent: async () => event, profile: '/tmp/iptv-iqiyi-auth-fixture', launchImpl: async () => browser, closeImpl: async () => {} })
+  await auth.checkAccount()
+  code = 'P00100'; await assert.rejects(auth.checkAccount(), e => e.credential === true && /重新登录/.test(e.message))
+  code = 'down'; await assert.rejects(auth.checkAccount(), e => !e.credential)
+  await auth.flow.start()
+  await assert.rejects(auth.checkAccount(), /登录操作/)
+  assert.equal(evaluations, 3)
   await auth.shutdown()
 })

@@ -2,6 +2,8 @@ import { createCatalog, officialFetch, selectAuthorizedMedia, checkManifest, val
 import { createEligibility } from './eligibility.js'
 import { createBrowserAuth } from './auth.js'
 
+const ACCOUNT_RECHECK_MS = 10 * 60 * 1000
+
 export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = officialFetch, now = Date.now, onFilterUpdate, eligibilityWaitMs = 5000 } = {}) {
   auth ||= createBrowserAuth({ getEvent: async () => {
     // Free rooms prove nothing about the account; only member rooms can verify login.
@@ -9,7 +11,7 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
     return events.find(e => !e.free) || vods.find(e => !e.free)
   } })
   const tickets = new Map(), pending = new Map()
-  let rejected = '', revision = auth.revision(), capturing = false
+  let rejected = '', revision = auth.revision(), capturing = false, accountCheck, accountCheckedAt = -Infinity
   const eligibility = createEligibility({ now, onUpdate: onFilterUpdate,
     isPaused: () => capturing || auth.flow.status().active || auth.flow.status().status === 'waiting',
     probe: async event => {
@@ -38,7 +40,18 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
   })
   const clear = () => { tickets.clear(); eligibility.reset() }
   function syncRevision() {
-    if (auth.revision() !== revision) { clear(); revision = auth.revision(); rejected = '' }
+    if (auth.revision() !== revision) { clear(); revision = auth.revision(); rejected = ''; accountCheckedAt = -Infinity }
+  }
+  // A valid account without this room's rights gets the same preview as an expired login.
+  // The refused item is hidden at once; the login alert waits for the official account API,
+  // asked off the manifest path and at most every ten minutes because players keep retrying.
+  function confirmLoginSoon() {
+    if (!auth.checkAccount || accountCheck || now() - accountCheckedAt < ACCOUNT_RECHECK_MS) return
+    accountCheckedAt = now()
+    const epoch = auth.revision()
+    accountCheck = auth.checkAccount().then(() => { if (auth.revision() === epoch) rejected = '' },
+      error => { if (error.credential && auth.revision() === epoch) rejected = error.message })
+      .finally(() => { accountCheck = undefined })
   }
   // Re-check authorization off the manifest path: a browser capture takes seconds and
   // would stall players if it ran inside a manifest poll. Hard expiry stays at four minutes.
@@ -46,7 +59,7 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
     cached.renewAt = now() + 30000
     ticket(event, true).catch(error => {
       if (!error.credential) return
-      rejected = error.message
+      confirmLoginSoon()
       eligibility.record(event, 'denied', error.message)
       if (tickets.get(event.id) === cached) tickets.delete(event.id)
     })
@@ -118,7 +131,7 @@ export function createRuntime({ catalog = createCatalog(), auth, fetchImpl = off
           upstreamHeaders: target => { validateMediaUrl(target); return { Referer: event.officialPage, 'User-Agent': 'Mozilla/5.0' } },
           upstreamUrlTransform: validateMediaUrl }
       } catch (error) {
-        if (error.credential) rejected = error.message
+        if (error.credential) confirmLoginSoon()
         if (selectedEvent) eligibility.record(selectedEvent, error.credential || /DRM|加密|H\.264|CDN|不一致/.test(error.message) ? 'denied' : 'unknown', '播放权限或媒体核验未通过，暂不显示')
         return { url: '', desc: String(error.message).replace(/https?:\/\/\S+/g, '[官方地址]') }
       }

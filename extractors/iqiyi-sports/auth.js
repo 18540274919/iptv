@@ -90,6 +90,13 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
       if (!account.ok || account.code !== 'A00000' || !account.hasUser) throw new Error('官方账号状态核验未完成，请稍后重试')
     } finally { await page.close() }
   }
+  // The official player gives an expired login and a valid account without this room's
+  // rights the same preview; the runtime asks this in the background before alerting.
+  async function checkAccount() {
+    if (busy || state.status === 'waiting') throw new Error('爱奇艺正在处理登录操作，请稍后核验')
+    pages++
+    try { await verifyAccount((await ensure()).defaultBrowserContext()) } finally { pages-- }
+  }
   async function verify(context, event) {
     // A replay card may be marked paid while its video is publicly playable.
     // Complete VOD + cookie presence alone cannot validate imported credentials.
@@ -187,5 +194,5 @@ export function createBrowserAuth({ getEvent, profile = dataPath('iqiyi-sports/c
     cancel: () => action(async () => { await finishLoginWindow(); state = { ...state, status: 'idle', message: '登录窗口已关闭，后续核验在后台运行；已保存的登录态保留' }; return snapshot() }),
     close: () => action(async () => { await close(); state = { ...state, status: state.status === 'waiting' ? 'idle' : state.status, message: '后台浏览器已关闭，已保存的登录态会在下次播放时恢复' }; return snapshot() }),
   }
-  return { flow, capture, captureAnonymous, revision: () => revision, shutdown: close }
+  return { flow, capture, captureAnonymous, checkAccount, revision: () => revision, shutdown: close }
 }
