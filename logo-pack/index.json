@@ -1554,6 +1554,15 @@
    "updated": "2026-09-29",
    "width": 96
   },
+  "江门综合": {
+   "file": "江门综合.png",
+   "hash": "656baf9158",
+   "height": 55,
+   "origin": "jiangmen",
+   "source": "http://www.jmtv.cn/images/pc/ic_logo.png",
+   "updated": "2026-10-18",
+   "width": 256
+  },
   "江苏城市": {
    "file": "江苏城市.png",
    "hash": "447495a3f5",
@@ -5025,6 +5034,7 @@
   "iqilu/iqilu-typd": "山东体育休闲",
   "iqilu/iqilu-yspd": "山东文旅",
   "iqilu/iqilu-zypd": "山东综艺",
+  "jiangmen/jiangmen-1": "江门综合",
   "jiaxing/jiaxing-culture": "嘉兴文化影视",
   "jiaxing/jiaxing-news": "嘉兴新闻综合",
   "jiaxing/jiaxing-public": "嘉兴公共频道",

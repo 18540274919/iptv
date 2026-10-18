@@ -188,6 +188,7 @@ import kankanews from './kankanews/index.js'
 import livechina from './livechina/index.js'
 import lotustv from './lotustv/index.js'
 import meizhouHakka from './meizhou-hakka/index.js'
+import jiangmen from './jiangmen/index.js'
 import mgtv from './mgtv/index.js'
 import migu from './migu/index.js'
 import ningbo from './ningbo/index.js'
@@ -271,6 +272,7 @@ const MODULES = [
   iqilu,
   sztv,
   meizhouHakka,
+  jiangmen,
   njtv,
   nmtv,
   shanxi,
