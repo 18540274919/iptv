@@ -210,6 +210,7 @@ import xinjiang from './xinjiang/index.js'
 import xizang from './xizang/index.js'
 import wuxi from './wuxi/index.js'
 import yangzhou from './yangzhou/index.js'
+import nantong from './nantong/index.js'
 import yunnan from './yunnan/index.js'
 import tdm from './tdm/index.js'
 import overseas from './overseas/index.js'
@@ -266,6 +267,7 @@ const MODULES = [
   jstv,
   wuxi,
   yangzhou,
+  nantong,
   iqilu,
   sztv,
   meizhouHakka,

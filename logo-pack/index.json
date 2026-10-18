@@ -2052,6 +2052,33 @@
    "updated": "2026-09-25",
    "width": 256
   },
+  "南通公共": {
+   "file": "南通公共.png",
+   "hash": "01ece9782f",
+   "height": 216,
+   "origin": "nantong",
+   "source": "https://cm-vod.ntjoy.com/bdcbb0d2-c8a3-4102-a614-335f89323f19.png",
+   "updated": "2026-10-18",
+   "width": 216
+  },
+  "南通社教": {
+   "file": "南通社教.png",
+   "hash": "01ece9782f",
+   "height": 216,
+   "origin": "nantong",
+   "source": "https://cm-vod.ntjoy.com/bdcbb0d2-c8a3-4102-a614-335f89323f19.png",
+   "updated": "2026-10-18",
+   "width": 216
+  },
+  "南通新闻综合": {
+   "file": "南通新闻综合.png",
+   "hash": "01ece9782f",
+   "height": 216,
+   "origin": "nantong",
+   "source": "https://cm-vod.ntjoy.com/bdcbb0d2-c8a3-4102-a614-335f89323f19.png",
+   "updated": "2026-10-18",
+   "width": 216
+  },
   "内蒙古经济生活": {
    "file": "内蒙古经济生活.png",
    "hash": "620eb3605f",
@@ -5056,6 +5083,9 @@
   "mgtv/mgtv-344": "湖南娱乐",
   "mgtv/mgtv-346": "湖南都市",
   "mgtv/mgtv-484": "湖南电视剧",
+  "nantong/nantong-1": "南通新闻综合",
+  "nantong/nantong-2": "南通社教",
+  "nantong/nantong-3": "南通公共",
   "ningbo/ningbo-city": "宁波都市文体",
   "ningbo/ningbo-drama": "宁波影视剧",
   "ningbo/ningbo-economy": "宁波经济生活",
