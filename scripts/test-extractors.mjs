@@ -417,6 +417,19 @@ check('选流：AVC 优先于 HEVC（老盒子解不了 HEVC），可反转', ()
   assert.equal(selectFromPlayurl(data, { preferAvc: false }).url, 'https://a/h265')
 })
 
+check('选流：关掉优先 H.264 时，HEVC 档位比 AVC 低就仍选 AVC', () => {
+  // 10-19 登录实测 594063：avc 给原画真彩 25000，hevc 只给蓝光 400
+  const data = playurl([
+    { protocol_name: 'http_hls', format: [{ codec: [
+      { ...codecOf('avc', '/h264', 'https://a', ''), current_qn: 25000 },
+      { ...codecOf('hevc', '/h265', 'https://a', ''), current_qn: 400 },
+    ] }] },
+  ])
+  const picked = selectFromPlayurl(data, { preferAvc: false })
+  assert.equal(picked.url, 'https://a/h264')
+  assert.equal(picked.qn, 25000)
+})
+
 check('选流：地址是裸字符串拼接，expires token 原样保留', () => {
   const extra = '?expires=1787000000&len=0&oi=123&pt=web&sign=abc&trid=xyz'
   const data = playurl([

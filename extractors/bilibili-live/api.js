@@ -19,7 +19,7 @@ export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 // 画质档位。高清以上要登录态，顶档还要大会员——服务端不会拒绝请求，而是
 // 静默降档，所以实际给到哪一档值得报出来（也是判断 cookie 有没有生效的信号）。
 const QN_NAMES = {
-  30000: '杜比', 20000: '4K', 15000: '2K', 10000: '原画',
+  30000: '杜比', 25000: '原画真彩', 20000: '4K', 15000: '2K', 10000: '原画',
   400: '蓝光', 250: '超清', 150: '高清', 80: '流畅',
 }
 
@@ -532,8 +532,11 @@ export function selectFromPlayurl(data, { preferHls = true, preferAvc = true } =
 
   for (const stream of sortedStreams) {
     for (const format of stream.format || []) {
+      // 关掉优先 H.264 时 HEVC 也只在档位不低于 avc 时才优先：实测有房间登录后 avc 给
+      // 原画/原画真彩、hevc 却只给蓝光，按编码名硬排会把「最高画质」排成蓝光。
       const codecs = [...(format.codec || [])].sort((a, b) =>
-        byName(wantCodec)(a.codec_name, b.codec_name))
+        (preferAvc ? 0 : (Number(b.current_qn) || 0) - (Number(a.current_qn) || 0))
+        || byName(wantCodec)(a.codec_name, b.codec_name))
       for (const codec of codecs) {
         const base = codec.base_url || ''
         for (const hostInfo of codec.url_info || []) {
