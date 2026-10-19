@@ -292,8 +292,8 @@ export async function fetchRoom(roomRef, options = {}) {
 const HIGH_RES_MIN = 10000
 
 function bitrateLabel(rate) {
-  if (rate >= 20000) return '4K '
-  if (rate >= HIGH_RES_MIN) return '2K '
+  if (rate >= 20000) return '4K'
+  if (rate >= HIGH_RES_MIN) return '2K'
   return rate ? `${rate}K` : '原画'
 }
 
