@@ -116,7 +116,8 @@ export default {
       type: 'select',
       options: QUALITY_OPTIONS,
       default: DEFAULT_QUALITY,
-      hint: '官网会按直播间实际档位自动回落。匿名实测可取原画；默认 2M 更适合电视端长时间播放。'
+      hint: '官网会按直播间实际档位自动回落，默认 2M 更适合电视端长时间播放。'
+        + '未登录时斗鱼官方最高只给超清（720P），选原画也会拿到超清，播放日志会写明实际档位。'
         + '单个频道可在播放地址末尾加 ?quality= 覆盖：0 原画、3 超清、2 高清。',
     },
   ],

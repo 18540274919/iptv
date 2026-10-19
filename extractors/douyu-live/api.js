@@ -243,6 +243,17 @@ export function isOfficialStreamUrl(raw) {
   }
 }
 
+// 流名后缀 → 档位；没有后缀是原画
+const STREAM_SUFFIX_TIERS = new Map([['4000', '蓝光4M'], ['2000', '超清'], ['900', '高清']])
+
+function streamSuffix(pathname) {
+  return /_(\d+)\.m3u8$/i.exec(String(pathname || ''))?.[1] || ''
+}
+
+export function streamTierName(pathname) {
+  return STREAM_SUFFIX_TIERS.get(streamSuffix(pathname)) || ''
+}
+
 async function resolveFresh(room, ctx) {
   const page = await fetchRoom(room, { timeoutMs: ctx.timeoutMs, fetchImpl: ctx.fetchImpl })
   const now = Number(ctx.now ?? Date.now())
@@ -266,11 +277,16 @@ async function resolveFresh(room, ctx) {
   const url = new URL(String(data.url || ''))
   if (url.protocol === 'http:') url.protocol = 'https:'
   if (!isOfficialStreamUrl(url.href)) throw new DouyuError('斗鱼返回的 HLS 地址不属于官方 CDN')
+  const requested = Number(signed.get('rate'))
   const selected = (Array.isArray(data.settings) ? data.settings : [])
     .find(item => Number(item?.rate) === Number(data.rate))
+  // 接口回的 rate 跟着请求走、不可信：未登录要原画也照样回「原画1080P60」，地址却是
+  // xxx_2000.m3u8（超清 720P）。档位以地址里的流名后缀为准。
+  const actual = streamTierName(url.pathname) || selected?.name || '直播'
+  const capped = requested === 0 && STREAM_SUFFIX_TIERS.has(streamSuffix(url.pathname))
   return {
     url: url.href,
-    desc: `斗鱼「${page.name}」${selected?.name || '直播'}地址获取成功`,
+    desc: `斗鱼「${page.name}」${actual}地址获取成功${capped ? '（未登录官方最高只给到这一档）' : ''}`,
     relayHls: true,
     upstreamHeaders: { Referer: REFERER, 'User-Agent': UA },
   }

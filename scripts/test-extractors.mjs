@@ -1765,6 +1765,24 @@ check('虎牙：播放器配置与画质回落可从房间页稳定提取', () =
   assert.equal(selectHuyaBitrate(room.bitrates, 0), 0, '0 表示原画')
 })
 
+check('虎牙：赛事房间最高画质取 4K/2K，跳过 HDR，没有高清档时不掉到原画以下', () => {
+  // 10-19 实测 660000 / 660002 的 vMultiStreamInfo；HDR 档（14100 等）HLS 返回 404
+  const esports = [
+    { iBitRate: 20100, iCompatibleFlag: 24576 }, { iBitRate: 20000, iCompatibleFlag: 0 },
+    { iBitRate: 14100, iCompatibleFlag: 24576 }, { iBitRate: 14000, iCompatibleFlag: 0 },
+    { iBitRate: 4200, iCompatibleFlag: 24576 }, { iBitRate: 0 }, { iBitRate: 4000 }, { iBitRate: 2000 }, { iBitRate: 500 },
+  ]
+  const twoK = [{ iBitRate: 0 }, { iBitRate: 14100, iCompatibleFlag: 16384 }, { iBitRate: 14000 }, { iBitRate: 8000 }, { iBitRate: 4000 }]
+  const plain = [{ iBitRate: 0 }, { iBitRate: 8000 }, { iBitRate: 4000 }, { iBitRate: 2000 }]
+  assert.equal(selectHuyaBitrate(esports, 0), 20000, '最高画质取 4K')
+  assert.equal(selectHuyaBitrate(esports, 14000), 14000)
+  assert.equal(selectHuyaBitrate(esports, 4000), 4000, 'HDR 4200 不算')
+  assert.equal(selectHuyaBitrate(twoK, 0), 14000)
+  assert.equal(selectHuyaBitrate(twoK, 20000), 14000, '没有 4K 回落 2K')
+  assert.equal(selectHuyaBitrate(plain, 0), 0, '没有 2K/4K 就是原画')
+  assert.equal(selectHuyaBitrate(plain, 20000), 0, '要 4K 但没有：原画，不掉到 8M')
+})
+
 check('虎牙：官网 H5 签名算法固定样本一致', () => {
   const room = parseHuyaRoomPage(huyaPlayerHtml, '660101')
   const signed = new URL(signHuyaHlsUrl(room.streams[0], room.presenterUid, 2000, 1700000000000))
@@ -2115,6 +2133,23 @@ await checkAsync('斗鱼：?quality=0 覆盖后台超清，按原画取流', asy
   await resolveDouyuRoom('douyu-9999', { now: 1700000000000, config, fetchImpl })
   await resolveDouyuRoom('douyu-9999', { now: 1700000000000, config, query: { quality: '9' }, fetchImpl })
   assert.deepEqual(rates, ['0', '3'], '认不出的档回落到后台超清，且命中超清的缓存')
+  clearDouyuResolveCache()
+})
+
+await checkAsync('斗鱼：画质提示按地址流名后缀写实际档位，未登录要原画给了超清时注明', async () => {
+  clearDouyuResolveCache()
+  const config = resolveConfig(douyu, {})
+  // 10-19 实测：未登录 rate=0 时接口仍回 rate 0 / 原画1080P60，地址却是 _2000（720P）
+  const fetchImpl = async url => {
+    if (String(url) === 'https://m.douyu.com/9999') return { ok: true, status: 200, text: async () => douyuMobileHtml }
+    return { ok: true, status: 200, json: async () => ({
+      error: 0,
+      data: { settings: [{ name: '原画1080P60', rate: 0 }, { name: '超清', rate: 3 }], rate: 0, pass: 0, url: 'https://openhls-hw.douyucdn2.cn/live/9999rAbc_2000.m3u8?txSecret=x' },
+    }) }
+  }
+  const best = await resolveDouyuRoom('douyu-9999', { now: 1700000000000, config, query: { quality: '0' }, fetchImpl })
+  assert.match(best.desc, /超清地址获取成功（未登录官方最高只给到这一档）/)
+  assert.doesNotMatch(best.desc, /原画/)
   clearDouyuResolveCache()
 })
 
