@@ -2,12 +2,20 @@
 import { createHash } from 'node:crypto'
 import vm from 'node:vm'
 import fetch from 'node-fetch'
+import { qualityFrom } from '../../utils/qualityOverride.js'
 
 export const DOUYU_GROUP = '斗鱼'
 export const REFERER = 'https://m.douyu.com/'
 export const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
   + 'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
 export const DEFAULT_MIN_HEAT = 100000
+export const DEFAULT_QUALITY = 3
+// 后台下拉框与播放地址 ?quality= 共用这一份档位表
+export const QUALITY_OPTIONS = Object.freeze([
+  { value: 0, label: '原画 / 最高画质' },
+  { value: 3, label: '超清 2M（推荐）' },
+  { value: 2, label: '高清 900K' },
+])
 
 // 这些都是官网分类页 var $DATA.pagePath 当前指向的 JSON 接口。与直接解析页面卡片
 // 相比，字段更稳定、响应也小得多；分类名仍与官网导航保持一致。
@@ -242,7 +250,7 @@ async function resolveFresh(room, ctx) {
   const signed = createMobileSign(page.signerCode, page.roomId, ANONYMOUS_DID, timestamp)
   signed.set('ver', MOBILE_PLAYER_VERSION)
   signed.set('rid', page.roomId)
-  signed.set('rate', String(Number(ctx.config?.quality ?? 3)))
+  signed.set('rate', String(qualityFrom(ctx, QUALITY_OPTIONS, DEFAULT_QUALITY)))
 
   const response = await fetchResponse('https://m.douyu.com/hgapi/livenc/room/getStreamUrl', {
     timeoutMs: ctx.timeoutMs,
@@ -274,7 +282,7 @@ export async function resolveRoom(ref, ctx = {}) {
     if (!match) return { url: '', desc: '斗鱼房间引用格式错误' }
     const room = normalizeRoom(match[1])
     const now = Number(ctx.now ?? Date.now())
-    const quality = Number(ctx.config?.quality ?? 3)
+    const quality = qualityFrom(ctx, QUALITY_OPTIONS, DEFAULT_QUALITY)
     const key = `${room}:${quality}`
     const cached = resolveCache.get(key)
     if (cached && cached.expiresAt > now) return cached.value

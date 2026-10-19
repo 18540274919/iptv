@@ -23,7 +23,8 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 
 import { listModules, getModule, sourceIdOf, resolverFor, validateModule, MODULE_ID_RE, MODULE_CATEGORIES } from '../extractors/registry.js'
-import { clearUrlCache } from '../utils/appUtils.js'
+import { clearUrlCache, channel as playbackChannel } from '../utils/appUtils.js'
+import { qualityFrom } from '../utils/qualityOverride.js'
 import {
   selectFromPlayurl, parseRoomList, normalizeRoom, mapLimit, selectTopRooms, RoomError, BILIBILI_GROUP, DEFAULT_MIN_ONLINE,
   fetchRoom as fetchBiliRoom,
@@ -2041,6 +2042,150 @@ await checkAsync('斗鱼：模块抓取分类热门房间，播放时匿名刷�
   assert.match(resolved.desc, /超清地址获取成功/)
   assert.equal(resolved.relayHls, true)
   assert.equal(resolved.upstreamHeaders.Referer, 'https://m.douyu.com/')
+})
+
+// ---- 按频道覆盖画质（issue #185）与 B 站 4K / 杜比（issue #186）----
+
+check('画质覆盖：?quality= 只认下拉框里的档，认不出回落到后台配置', () => {
+  const options = [{ value: 0 }, { value: 2000 }]
+  assert.equal(qualityFrom({ config: { quality: 2000 }, query: { quality: '0' } }, options, 2000), 0)
+  assert.equal(qualityFrom({ config: { quality: 0 }, query: { quality: '2000' } }, options, 2000), 2000)
+  assert.equal(qualityFrom({ config: { quality: 0 }, query: { quality: '1234' } }, options, 2000), 0, '不在档位表里')
+  assert.equal(qualityFrom({ config: { quality: 0 }, query: { quality: 'abc' } }, options, 2000), 0)
+  assert.equal(qualityFrom({ config: { quality: 2000 }, query: { quality: '' } }, options, 2000), 2000, '空值不当 0')
+  assert.equal(qualityFrom({ config: {} }, options, 2000), 2000, '后台没存过用默认')
+})
+
+check('画质覆盖：三个直播模块都声明纯直播，查询参数不会被当回看参数拼进签名地址', () => {
+  for (const mod of [huya, douyu, bili]) {
+    assert.equal(mod.capabilities.catchup, false, mod.id)
+    assert.ok(mod.configSchema.some(field => field.key === 'quality'), `${mod.id} 有画质选项`)
+  }
+  assert.equal(bili.configSchema.find(field => field.key === 'quality').default, 0, 'B 站默认最高画质')
+})
+
+await checkAsync('画质覆盖：播放地址的查询参数交给模块，签名地址原样下发', async () => {
+  const original = huya.resolve
+  let seen = null
+  huya.resolve = async (ref, ctx) => {
+    seen = { ref, query: ctx.query }
+    return { url: 'https://al.hls.huya.com/src/abc.m3u8?wsSecret=x' }
+  }
+  try {
+    const result = await playbackChannel('/huya-660101?quality=0', '', '')
+    assert.equal(seen.ref, 'huya-660101')
+    assert.deepEqual(seen.query, { quality: '0' })
+    assert.equal(result.playURL, 'https://al.hls.huya.com/src/abc.m3u8?wsSecret=x', '不能拼出 &quality=0')
+    await playbackChannel('/huya-660101', '', '')
+    assert.deepEqual(seen.query, {}, '没有参数时是空对象')
+  } finally {
+    huya.resolve = original
+  }
+})
+
+await checkAsync('虎牙：?quality=0 覆盖后台 2M，去掉 ratio 取原画，并与 2M 分开缓存', async () => {
+  clearHuyaResolveCache()
+  const config = resolveConfig(huya, {})
+  assert.equal(config.quality, 2000)
+  const upstream = huyaUpstream(huyaPlayerHtml)
+  const normal = await resolveHuyaRoom('huya-660101', { now: 1700000000000, config, fetchImpl: upstream.fetchImpl })
+  assert.equal(new URL(normal.url).searchParams.get('ratio'), '2000')
+  const best = await resolveHuyaRoom('huya-660101', { now: 1700000001000, config, query: { quality: '0' }, fetchImpl: upstream.fetchImpl })
+  assert.equal(new URL(best.url).searchParams.has('ratio'), false, '原画不带 ratio')
+  assert.match(best.desc, /原画/)
+  assert.equal(upstream.hits.page, 2, '不同画质各取一次房间页')
+  clearHuyaResolveCache()
+})
+
+await checkAsync('斗鱼：?quality=0 覆盖后台超清，按原画取流', async () => {
+  clearDouyuResolveCache()
+  const config = resolveConfig(douyu, {})
+  const rates = []
+  const fetchImpl = async (url, options = {}) => {
+    if (String(url) === 'https://m.douyu.com/9999') return { ok: true, status: 200, text: async () => douyuMobileHtml }
+    const rate = new URLSearchParams(String(options.body)).get('rate')
+    rates.push(rate)
+    return { ok: true, status: 200, json: async () => ({
+      error: 0,
+      data: { settings: [{ name: '原画', rate: 0 }, { name: '超清', rate: 3 }], rate: Number(rate), pass: 0, url: `https://openhls-hw.douyucdn2.cn/live/test_${rate}.m3u8` },
+    }) }
+  }
+  const best = await resolveDouyuRoom('douyu-9999', { now: 1700000000000, config, query: { quality: '0' }, fetchImpl })
+  assert.match(best.desc, /原画地址获取成功/)
+  await resolveDouyuRoom('douyu-9999', { now: 1700000000000, config, fetchImpl })
+  await resolveDouyuRoom('douyu-9999', { now: 1700000000000, config, query: { quality: '9' }, fetchImpl })
+  assert.deepEqual(rates, ['0', '3'], '认不出的档回落到后台超清，且命中超清的缓存')
+  clearDouyuResolveCache()
+})
+
+/** 按请求里的 qn 回包：qn 档有就给这一档，accept_qn 是房间全部档位，cap 模拟没登录被封顶。 */
+const biliQnFixture = ({ accept, cap = Infinity, codec = 'avc' }) => {
+  const qns = []
+  const fetchImpl = async raw => {
+    const url = new URL(String(raw))
+    const asked = Number(url.searchParams.get('qn'))
+    qns.push(asked)
+    const current = Math.min(cap, Math.max(...accept.filter(qn => qn <= asked), Math.min(...accept)))
+    const payload = { code: 0, data: playurl([
+      { protocol_name: 'http_hls', format: [{ codec: [{
+        ...codecOf(codec, `/live_${current}.m3u8`, 'https://cn-gotcha.bilivideo.com', '?sign=x'),
+        current_qn: current,
+        accept_qn: accept,
+      }] }] },
+    ]) }
+    return { ok: true, status: 200, json: async () => payload }
+  }
+  return { fetchImpl, qns }
+}
+
+await checkAsync('B 站：最高画质先按原画请求，房间有 4K / 杜比时再要一次', async () => {
+  clearBiliResolveCache()
+  const room = biliQnFixture({ accept: [30000, 20000, 10000, 400, 250] })
+  const best = await resolveBiliRoom('bili-21144080', { now: 1700000000000, config: { sessdata: 'abc' }, fetchImpl: room.fetchImpl })
+  assert.deepEqual(room.qns, [10000, 30000])
+  assert.match(best.url, /live_30000\.m3u8/)
+  assert.match(best.desc, /杜比/)
+  clearBiliResolveCache()
+})
+
+await checkAsync('B 站：房间最高就是原画、或已被降档（没登录）时，不多打一次接口', async () => {
+  clearBiliResolveCache()
+  const plain = biliQnFixture({ accept: [10000, 400, 250] })
+  const top = await resolveBiliRoom('bili-1', { now: 1700000000000, config: { sessdata: 'abc' }, fetchImpl: plain.fetchImpl })
+  assert.deepEqual(plain.qns, [10000])
+  assert.match(top.desc, /原画/)
+
+  const anon = biliQnFixture({ accept: [20000, 10000, 400, 250], cap: 250 })
+  const capped = await resolveBiliRoom('bili-2', { now: 1700000000000, config: {}, fetchImpl: anon.fetchImpl })
+  assert.deepEqual(anon.qns, [10000], '被封顶超清，再往上要也拿不到')
+  assert.match(capped.desc, /超清/)
+  clearBiliResolveCache()
+})
+
+await checkAsync('B 站：指定档位直接按 qn 请求；?quality= 覆盖后台并分开缓存', async () => {
+  clearBiliResolveCache()
+  const room = biliQnFixture({ accept: [20000, 10000, 400, 250] })
+  const config = { sessdata: 'abc', quality: 400 }
+  const blue = await resolveBiliRoom('bili-3', { now: 1700000000000, config, fetchImpl: room.fetchImpl })
+  assert.match(blue.desc, /蓝光/)
+  const best = await resolveBiliRoom('bili-3', { now: 1700000000000, config, query: { quality: '0' }, fetchImpl: room.fetchImpl })
+  assert.match(best.desc, /4K/)
+  assert.deepEqual(room.qns, [400, 10000, 20000])
+  await resolveBiliRoom('bili-3', { now: 1700000001000, config, fetchImpl: room.fetchImpl })
+  assert.equal(room.qns.length, 3, '后台档位的缓存不被覆盖档顶掉')
+  clearBiliResolveCache()
+})
+
+await checkAsync('B 站：抓取时按后台画质要流，频道名的档位与播放一致', async () => {
+  const room = biliQnFixture({ accept: [20000, 10000, 400, 250] })
+  const payloads = biliApiFixture()
+  const fetchImpl = async (raw, init) => new URL(String(raw)).pathname === '/xlive/web-room/v2/index/getRoomPlayInfo'
+    ? room.fetchImpl(raw, init)
+    : payloads.fetchImpl(raw, init)
+  const { channel } = await fetchBiliRoom('21144080', { cookie: 'SESSDATA=abc', quality: 0, fetchImpl })
+  assert.match(channel.name, /^\[4K\] /)
+  const fixed = await fetchBiliRoom('21144080', { cookie: 'SESSDATA=abc', quality: 400, fetchImpl })
+  assert.match(fixed.channel.name, /^\[蓝光\] /)
 })
 
 // ---- 广西网络台 / 浙江新蓝网 ----

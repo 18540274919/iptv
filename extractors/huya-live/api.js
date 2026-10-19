@@ -2,12 +2,21 @@
 import { createHash } from 'node:crypto'
 import fetch from 'node-fetch'
 import { printYellow } from '../../utils/colorOut.js'
+import { qualityFrom } from '../../utils/qualityOverride.js'
 
 export const HUYA_GROUP = '虎牙'
 export const REFERER = 'https://www.huya.com/'
 export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
   + '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 export const DEFAULT_MIN_HEAT = 3000
+export const DEFAULT_QUALITY = 2000
+// 后台下拉框与播放地址 ?quality= 共用这一份档位表
+export const QUALITY_OPTIONS = Object.freeze([
+  { value: 0, label: '原画 / 最高画质' },
+  { value: 4000, label: '蓝光 4M' },
+  { value: 2000, label: '超清 2M（推荐）' },
+  { value: 500, label: '流畅 500K' },
+])
 
 export const AREA_PAGES = Object.freeze({
   赛事: 'https://www.huya.com/m',
@@ -448,7 +457,7 @@ export function orderLines(lines, preferred, rejected, now) {
  */
 async function resolveFresh(room, ctx) {
   const now = Number(ctx.now ?? Date.now())
-  const quality = Number(ctx.config?.quality ?? 2000)
+  const quality = qualityFrom(ctx, QUALITY_OPTIONS, DEFAULT_QUALITY)
   // 整个房间刚被判定全线不可用：短时间内直接回同一结论，别替播放器的连环重试去打上游
   const failed = roomFailUntil.get(room)
   if (failed && failed.until > now) throw new HuyaError(failed.desc)
