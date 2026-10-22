@@ -12,7 +12,7 @@
  * 生成结果与改动前逐字节一致、照旧继承订阅头。
  *
  * 注意：这些值来自用户添加的第三方订阅（不可信输入），要原样写回一个换行、引号敏感的
- * 格式里，因此：模式过白名单、天数只收正整数、模板含引号 / 换行 / 控制字符者整条拒收
+ * 格式里，因此：模式过白名单、天数只收正整数、模板含引号 / 空白 / 控制字符者整条拒收
  * （与 channelOpts 的 opt 消毒同理）；含逗号的也拒收——interface.txt 回读时频道名按
  * 「第一个逗号」切（与 source-ids 改用分号同一个原因），模板里一个逗号就会把频道名撑坏；
  * 模板里也不许出现 `${replace}`——输出订阅时它会被替换成本机地址连同访问密码 / 用户令牌，
@@ -66,14 +66,21 @@ function cleanDays(raw) {
  *
  * 含换行的整条丢弃而不是剔掉换行后留用——那会把注入内容粘成一条语法合法、
  * 值却是垃圾的模板，回看静默失败。宁可丢掉，让频道回退为继承订阅头的确定状态。
+ *
+ * 中间夹空白或以 `=` 结尾的也拒收：写回后值的收尾引号紧跟在后面，`…&group-title=`
+ * 会拼成 `group-title="` 冒充下一个属性（回读时分组被解析错）；` source-ids=` 更会被
+ * 输出时剥离内部属性的正则连同后面的真属性一起吃掉，把模板尾巴和分组名拼起来——
+ * `${re` + `place}` 就这样凑出 `${replace}`，绕过上面的字面量检查。模板本是网址或
+ * 查询串，正常不含空白，也不会以 `=` 结尾。
  */
 function cleanSource(raw) {
   if (typeof raw !== 'string') return undefined
   if (raw.length > MAX_SOURCE_LENGTH) return undefined
-  if (/[",\r\n\u0000-\u001f\u007f]/.test(raw)) return undefined
+  if (/[",\r\n\u0000-\u001f\u007f-\u009f]/.test(raw)) return undefined
   if (raw.includes('${replace}')) return undefined
   const value = raw.trim()
-  return value || undefined
+  if (!value || /\s/.test(value) || value.endsWith('=')) return undefined
+  return value
 }
 
 /**

