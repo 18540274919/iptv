@@ -1,0 +1,126 @@
+/**
+ * 频道级回看声明（catchup / catchup-days / catchup-source）的统一契约。
+ *
+ * 订阅头（updateData.js / playlistConfig.generateM3u8）声明的是咪咕的回看模板
+ * `?playbackbegin=…&playbackend=…`，所有没在行内声明的频道都会继承它。第三方订阅
+ * 往往自带另一套模板（如 `?playseek=${(b)…}-${(e)…}`）和回看天数，以前解析时被整个
+ * 丢掉，频道只能继承咪咕模板：服务端忽略陌生参数照给直播，播放器不报错，表现为
+ * 「回放入口消失 / 点了只有直播」（issue #190）。
+ *
+ * 频道对象上以三个可选字段承载：catchup（模式）、catchupDays（天数）、catchupSource（模板）。
+ * 解析、回读、生成三处都走这里，避免各写一套。没有声明的频道不长出这些字段，
+ * 生成结果与改动前逐字节一致、照旧继承订阅头。
+ *
+ * 注意：这些值来自用户添加的第三方订阅（不可信输入），要原样写回一个换行、引号敏感的
+ * 格式里，因此：模式过白名单、天数只收正整数、模板含引号 / 换行 / 控制字符者整条拒收
+ * （与 channelOpts 的 opt 消毒同理）；含逗号的也拒收——interface.txt 回读时频道名按
+ * 「第一个逗号」切（与 source-ids 改用分号同一个原因），模板里一个逗号就会把频道名撑坏；
+ * 模板里也不许出现 `${replace}`——输出订阅时它会被替换成本机地址连同访问密码 / 用户令牌，
+ * 写进第三方模板等于把凭据发给第三方。
+ */
+
+// 主流播放器（Kodi IPTV Simple、TiviMate、OTT Navigator 等）认的回看模式，
+// 外加本项目用来关掉继承的 none。白名单外的模式丢弃，频道回退为继承订阅头。
+const MODES = new Set([
+  'default',
+  'append',
+  'shift',
+  'timeshift',
+  'flussonic',
+  'flussonic-hls',
+  'flussonic-ts',
+  'fs',
+  'xc',
+  'vod',
+  'none',
+])
+
+// 模板长度上限。正常模板不过一两百字符，留足余量即可，
+// 免得畸形订阅把超长串灌进每一行播放列表。
+const MAX_SOURCE_LENGTH = 1024
+
+// 回看天数上限。各家实际都在 1～30 天，给到一年足够宽松
+const MAX_DAYS = 365
+
+/** 从一行 EXTINF / EXTM3U 里取属性值；属性名前必须是行首、空白或逗号，免得 x-catchup 之类误中 */
+function attr(line, name) {
+  const m = line.match(new RegExp(`(?:^|[\\s,])${name}="([^"]*)"`, 'i'))
+  return m ? m[1] : undefined
+}
+
+function cleanMode(raw) {
+  if (typeof raw !== 'string') return undefined
+  const mode = raw.trim().toLowerCase()
+  return MODES.has(mode) ? mode : undefined
+}
+
+function cleanDays(raw) {
+  const s = typeof raw === 'number' ? String(raw) : typeof raw === 'string' ? raw.trim() : ''
+  if (!/^\d{1,3}$/.test(s)) return undefined
+  const days = Number(s)
+  return days > 0 && days <= MAX_DAYS ? days : undefined
+}
+
+/**
+ * 清洗回看模板：含引号、逗号、换行、控制字符、`${replace}` 或超长者整条拒收，返回 undefined。
+ *
+ * 含换行的整条丢弃而不是剔掉换行后留用——那会把注入内容粘成一条语法合法、
+ * 值却是垃圾的模板，回看静默失败。宁可丢掉，让频道回退为继承订阅头的确定状态。
+ */
+function cleanSource(raw) {
+  if (typeof raw !== 'string') return undefined
+  if (raw.length > MAX_SOURCE_LENGTH) return undefined
+  if (/[",\r\n\u0000-\u001f\u007f]/.test(raw)) return undefined
+  if (raw.includes('${replace}')) return undefined
+  const value = raw.trim()
+  return value || undefined
+}
+
+/**
+ * 清洗一组回看声明，只保留合法字段；一个都不剩时返回空对象。
+ * 也用来从频道对象上挑出回看字段展开进新对象：`...sanitizeCatchup(ch)`。
+ * 模式为 none 时只留 catchup——关掉回看后天数和模板都没意义。
+ */
+export function sanitizeCatchup(info) {
+  if (!info || typeof info !== 'object') return {}
+  const catchup = cleanMode(info.catchup)
+  if (catchup === 'none') return { catchup }
+  const catchupDays = cleanDays(info.catchupDays)
+  const catchupSource = cleanSource(info.catchupSource)
+  return {
+    ...(catchup ? { catchup } : {}),
+    ...(catchupDays ? { catchupDays } : {}),
+    ...(catchupSource ? { catchupSource } : {}),
+  }
+}
+
+/**
+ * 从一行 #EXTINF 或 #EXTM3U 解析回看声明（已清洗）。
+ * 天数兼容 Kodi 等播放器也认的别名 tvg-rec / timeshift，catchup-days 优先。
+ */
+export function parseCatchupAttrs(line) {
+  if (typeof line !== 'string') return {}
+  return sanitizeCatchup({
+    catchup: attr(line, 'catchup'),
+    catchupDays: ['catchup-days', 'tvg-rec', 'timeshift'].map(name => attr(line, name)).find(cleanDays),
+    catchupSource: attr(line, 'catchup-source'),
+  })
+}
+
+/**
+ * 合并订阅文件头与频道行的声明：逐字段以行内为准，行内没写的沿用文件头。
+ * 常见写法是文件头写模式和模板、行内只写天数，只认行内会漏掉模板。
+ */
+export function mergeCatchup(header, line) {
+  return sanitizeCatchup({ ...sanitizeCatchup(header), ...sanitizeCatchup(line) })
+}
+
+/**
+ * 渲染成 EXTINF 属性片段（含前导空格）；没有声明时返回空串，输出与改动前逐字节一致。
+ */
+export function renderCatchupAttrs(channel) {
+  const { catchup, catchupDays, catchupSource } = sanitizeCatchup(channel)
+  return (catchup ? ` catchup="${catchup}"` : '')
+    + (catchupDays ? ` catchup-days="${catchupDays}"` : '')
+    + (catchupSource ? ` catchup-source="${catchupSource}"` : '')
+}
