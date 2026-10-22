@@ -36,9 +36,15 @@ function dedupeAllChannels(allChannels) {
             if (!prev.sourceIds.includes(extra)) prev.sourceIds.push(extra)
           }
         }
-        // 留下的那条没声明回看、被去掉的这条声明了：把声明接过来，否则同一路流
-        // 会因为列在前面的源没写而退回订阅头的咪咕模板（issue #190）
-        if (!Object.keys(sanitizeCatchup(prev)).length) Object.assign(prev, sanitizeCatchup(ch))
+        // 留下的那条没给回看模式和模板、被去掉的这条给了：把声明接过来（自己写的天数优先），
+        // 否则同一路流会因为列在前面的源没写而退回订阅头的咪咕模板（issue #190）。
+        // 只在外部订阅之间转交：第三方订阅能把地址写成 migu:<pid> 等撞上咪咕 / 内置 / 模块频道的
+        // 去重键，不能借此改写这些频道的回看
+        if (isExternalChannel(prev) && isExternalChannel(ch)) {
+          const own = sanitizeCatchup(prev)
+          const other = sanitizeCatchup(ch)
+          if (!own.catchup && !own.catchupSource && other.catchup !== 'none') Object.assign(prev, other, own)
+        }
         continue
       }
       seen.set(key, ch)

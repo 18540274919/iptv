@@ -212,6 +212,14 @@ try {
     assert.equal(parseCatchupAttrs(`#EXTINF:-1 catchup-source="${PLAYSEEK}",A`).catchup, undefined)
   })
 
+  await check('补模式只在合并后判断一次：文件头的完整地址被行内相对模板盖掉时不补 default，也不挡 timeshift', () => {
+    const header = '#EXTM3U catchup-source="http://h/cu/{catchup-id}?s=${(b)yyyyMMddHHmmss}"'
+    const parse = line => parsePlaylistContent(`${header}\n${line}\nhttp://h/live/1.m3u8`)[0]
+    assert.deepEqual(sanitizeCatchup(parse(`#EXTINF:-1 catchup-source="${PLAYSEEK}",A`)), { catchupSource: PLAYSEEK })
+    assert.equal(parse('#EXTINF:-1 timeshift="7",A').catchup, 'shift')
+    assert.equal(parse('#EXTINF:-1 group-title="g",A').catchup, 'default', '只有文件头的完整地址模板时照常补 default')
+  })
+
   await check('SIPTV 写法：只有 timeshift="N" 时按 shift 加 N 天；已有模式时只取天数；tvg-rec 只当天数', () => {
     const parse = (header, line) => parsePlaylistContent(`${header}\n${line}\nhttp://h/a.m3u8`)[0]
     assert.deepEqual(sanitizeCatchup(parse('#EXTM3U', '#EXTINF:-1 timeshift="7" group-title="g",A')), { catchup: 'shift', catchupDays: 7 })
@@ -299,6 +307,14 @@ try {
     assert.deepEqual(sanitizeCatchup(byName['坏副本']), { catchup: 'append' })
   })
 
+  await check('「复制到分组」的副本改了地址后，原地址的回看声明不再输出', () => {
+    const copy = mgr.sources.sources.find(s => s.name === '回看台副本')
+    copy.m3u8Url = 'http://other.example/live.m3u8'
+    const ch = mgr.getValidChannels().flatMap(g => g.dataList).find(c => c.name === '回看台副本')
+    assert.deepEqual(sanitizeCatchup(ch), {})
+    copy.m3u8Url = 'http://h/catchup.m3u8'
+  })
+
   await check('组内去重：留下的那条没声明回看时，接过被去掉那条的声明；已有声明的不覆盖', () => {
     const groups = [{ name: 'G', dataList: [
       { name: 'X', url: 'http://op/x.m3u8', sourceId: 'ext:a' },
@@ -311,6 +327,27 @@ try {
     assert.deepEqual(sanitizeCatchup(x), { catchup: 'append', catchupSource: PLAYSEEK })
     assert.deepEqual(x.sourceIds, ['ext:a', 'ext:b'])
     assert.deepEqual(sanitizeCatchup(y), { catchup: 'none' })
+  })
+
+  await check('组内去重：留下的那条只写了天数时，接过模式和模板、自己的天数优先', () => {
+    const groups = [{ name: 'G', dataList: [
+      { name: 'Z', url: 'http://op/z.m3u8', sourceId: 'ext:a', catchupDays: 7 },
+      { name: 'Z', url: 'http://op/z.m3u8', sourceId: 'ext:b', catchup: 'append', catchupDays: 3, catchupSource: PLAYSEEK },
+    ] }]
+    dedupeAllChannels(groups)
+    assert.deepEqual(sanitizeCatchup(groups[0].dataList[0]), { catchup: 'append', catchupDays: 7, catchupSource: PLAYSEEK })
+  })
+
+  await check('组内去重：第三方订阅撞上咪咕 / 内置频道的去重键时，不能改写它们的回看', () => {
+    // 第三方订阅可以把地址写成 migu:<pid>，或照抄内置源的地址
+    const groups = [{ name: 'G', dataList: [
+      { name: 'CCTV1', pID: '608807420', deferredRef: '608807420', source: 'extractor', sourceId: 'migu' },
+      { name: 'CCTV1', url: 'migu:608807420', sourceId: 'ext:x', catchup: 'none' },
+      { name: 'CCTV2', playURL: 'http://bi/2.m3u8', source: 'built-in', sourceId: 'bi:x' },
+      { name: 'CCTV2', url: 'http://bi/2.m3u8', sourceId: 'ext:x', catchup: 'default', catchupSource: 'http://evil.example/{utc}' },
+    ] }]
+    assert.equal(dedupeAllChannels(groups), 2)
+    for (const ch of groups[0].dataList) assert.deepEqual(sanitizeCatchup(ch), {}, ch.name)
   })
 
   // interface.txt 按 updateData 的写盘格式（含内部属性 source-ids）

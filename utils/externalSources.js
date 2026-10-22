@@ -659,6 +659,9 @@ class ExternalSourceManager {
    * 添加新的外部源
    */
   addSource(sourceConfig) {
+    // 「复制到分组」的副本带上原频道的回看声明（issue #190），并记下声明对应的地址：
+    // 之后在后台改了地址，声明就不再输出（见 getValidChannels 的直连分支）
+    const catchup = sanitizeCatchup(sourceConfig)
     const newSource = {
       name: sourceConfig.name,
       group: sourceConfig.group || "其他",
@@ -676,8 +679,8 @@ class ExternalSourceManager {
         headless: sourceConfig.headless !== false,
         ...sourceConfig.extractOptions
       },
-      // 「复制到分组」的副本带上原频道的回看声明（issue #190），否则副本会继承订阅头的咪咕模板
-      ...sanitizeCatchup(sourceConfig)
+      ...catchup,
+      ...(Object.keys(catchup).length ? { catchupUrl: sourceConfig.m3u8Url || "" } : {})
     }
     
     this.sources.sources.push(newSource)
@@ -1023,7 +1026,8 @@ class ExternalSourceManager {
           logo: source.logo || "",
           groupTitle: source.group,
           sourceId: source.id ? `ext:${source.id}` : undefined,   // 源归属（issue #29/#68）
-          ...sanitizeCatchup(source)   // 复制来的副本保留原频道的回看声明（issue #190）
+          // 复制来的副本保留原频道的回看声明（issue #190），地址改过就不再适用
+          ...(source.catchupUrl && source.catchupUrl === source.m3u8Url ? sanitizeCatchup(source) : {})
         })
       }
     })

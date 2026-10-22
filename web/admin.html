@@ -8337,10 +8337,6 @@
             // 切换模式时清掉本地导入内容/标记（订阅模式内再单独选「URL / 本地」）
             source.subscriptionContent = '';
             source.localImport = false;
-            // 「复制到分组」带来的回看声明只对原来那个地址有效，换了模式就不再适用（issue #190）
-            delete source.catchup;
-            delete source.catchupDays;
-            delete source.catchupSource;
 
             // 根据新模式清空对应的URL字段
             if (newMode === 'fetch') {

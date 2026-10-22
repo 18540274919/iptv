@@ -91,17 +91,13 @@ function cleanSource(raw) {
  * 清洗一组回看声明，只保留合法字段；一个都不剩时返回空对象。
  * 也用来从频道对象上挑出回看字段展开进新对象：`...sanitizeCatchup(ch)`。
  * 模式为 none 时只留 catchup——关掉回看后天数和模板都没意义。
- *
- * 有完整地址模板却没有（合法的）模式时补成 default：不补的话频道会继承订阅头的
- * catchup="append"，播放器把模板拼到直播地址后面，回看照样坏。
  */
 export function sanitizeCatchup(info) {
   if (!info || typeof info !== 'object') return {}
-  let catchup = cleanMode(info.catchup)
+  const catchup = cleanMode(info.catchup)
   if (catchup === 'none') return { catchup }
   const catchupDays = cleanDays(info.catchupDays)
   const catchupSource = cleanSource(info.catchupSource)
-  if (!catchup && catchupSource && ABSOLUTE_URL.test(catchupSource)) catchup = 'default'
   return {
     ...(catchup ? { catchup } : {}),
     ...(catchupDays ? { catchupDays } : {}),
@@ -126,13 +122,16 @@ export function parseCatchupAttrs(line) {
  * 算出一个频道最终的回看声明：订阅文件头（已解析）与 #EXTINF 行逐字段合并，行内为准。
  * 常见写法是文件头写模式和模板、行内只写天数，只认行内会漏掉模板。
  *
- * SIPTV 老写法 `timeshift="N"` 在文件头和行内都没声明模式时，等于 catchup="shift" 加 N 天
- * （Kodi 同此处理）。必须在这里显式补上：我们的订阅头带 catchup="append"，只写天数的话
- * 播放器会走订阅头的咪咕模板。
+ * 合并后仍没有（合法的）模式时，按源的写法补上，因为我们的订阅头带 catchup="append"，
+ * 不补就会被它接管：
+ *  - SIPTV 老写法 `timeshift="N"` 等于 catchup="shift" 加 N 天（Kodi 同此处理）；
+ *  - 完整地址模板补成 default，否则播放器会把它拼到直播地址后面。
+ * 只在合并后判断一次：文件头单独推断出的 default 配上行内的相对模板就错了。
  */
 export function resolveCatchup(header, line) {
   const merged = { ...sanitizeCatchup(header), ...parseCatchupAttrs(line) }
   if (!merged.catchup && typeof line === 'string' && cleanDays(attr(line, 'timeshift'))) merged.catchup = 'shift'
+  if (!merged.catchup && merged.catchupSource && ABSOLUTE_URL.test(merged.catchupSource)) merged.catchup = 'default'
   return sanitizeCatchup(merged)
 }
 
