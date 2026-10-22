@@ -69,28 +69,43 @@ function hasForeignReplaceToken(channel) {
 // 输出订阅时占位符会被换成「本机地址 + 访问密码 / 令牌」，第三方订阅、内置源 JSON、平台接口
 // 里写一个，凭据就拼进指向第三方的地址里了。整条丢弃而不是剔掉占位符：剔掉后剩下的是
 // 一条来路可疑、多半也播不了的地址。分组名带它的整组丢弃；因此被清空的分组一并去掉。
+// sources 是被丢频道的源归属（去重），日志里点名，用户才知道该去改哪个源。
 function dropForeignReplaceTokens(groups) {
   let removed = 0
+  const sources = new Set()
+  const drop = channel => {
+    removed++
+    const sid = primarySourceId(channel)
+    if (sid) sources.add(sid)
+  }
   const kept = []
   for (const group of groups) {
     const list = group.dataList || []
     if (hasReplaceToken(group.name)) {
-      removed += list.length
+      list.forEach(drop)
       continue
     }
-    const clean = list.filter(channel => !hasForeignReplaceToken(channel))
-    removed += list.length - clean.length
+    const clean = []
+    for (const channel of list) {
+      if (hasForeignReplaceToken(channel)) drop(channel)
+      else clean.push(channel)
+    }
     if (list.length && !clean.length) continue
     group.dataList = clean
     kept.push(group)
   }
-  return { groups: kept, removed }
+  return { groups: kept, removed, sources: [...sources] }
 }
 
-function reportForeignReplaceTokens(removed) {
-  if (removed > 0) {
-    printYellow(`丢弃 ${removed} 个带内部占位符 \${replace} 的频道：来自外部数据，原样输出会把访问密码 / 令牌拼进第三方地址`)
-  }
+// 外部源按名字报（ext:<id> 对用户没意义），其余报源归属本身（migu / bi:<id> / xt:<id>）
+function reportForeignReplaceTokens({ removed, sources }) {
+  if (!removed) return
+  const names = sources.map(sid => {
+    const ext = sid.startsWith('ext:') && (externalSourceManager.sources?.sources || []).find(s => s && `ext:${s.id}` === sid)
+    return ext?.name || sid
+  })
+  const from = names.length ? `（来源：${names.join('、')}）` : ''
+  printYellow(`丢弃 ${removed} 个带内部占位符 \${replace} 的频道${from}：输出订阅时它会换成本机地址和访问密码 / 令牌，外部数据里不允许出现`)
 }
 
 /** 「纪实」改名为「文旅」，并合并已经使用新名的其它来源。 */
@@ -400,7 +415,7 @@ async function getAllChannels() {
     // 同名同地址的干净条目被当成重复删掉，恶意条目随后再被丢弃，干净的那条就没了
     const foreign = dropForeignReplaceTokens(allChannels)
     allChannels = foreign.groups
-    reportForeignReplaceTokens(foreign.removed)
+    reportForeignReplaceTokens(foreign)
 
     // 平台历史名「纪实」统一显示为「文旅」，外部精选频道
     // 也合并到同一组，避免新旧名并存。
@@ -445,7 +460,7 @@ async function getAllChannels() {
     // ${replace}/undefined，比少几个频道糟糕得多。
     try {
       const foreign = dropForeignReplaceTokens(getExtractorManager().getValidChannels())
-      reportForeignReplaceTokens(foreign.removed)
+      reportForeignReplaceTokens(foreign)
       return foreign.groups
     } catch (fallbackError) {
       printRed(`抓取模块缓存也不可用: ${fallbackError.message}`)

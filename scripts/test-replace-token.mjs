@@ -70,6 +70,18 @@ try {
     assert.deepEqual(out[0].dataList.map(c => c.name), ['干净'])
   })
 
+  await check('汇总：返回被丢频道的源归属（去重），日志据此点名', () => {
+    const { sources } = dropForeignReplaceTokens([
+      { name: 'G', dataList: [
+        { name: 'A', url: `http://evil/?${T}`, sourceId: 'ext:aa000001' },
+        { name: 'B', logo: `http://evil/?${T}`, url: 'http://h/b.m3u8', sourceId: 'ext:aa000001' },
+        { name: 'C', pID: '1', pics: { highResolutionH: `http://evil/?${T}` } },
+        { name: 'D', url: 'http://h/d.m3u8', sourceId: 'ext:bb000002' },
+      ] },
+    ])
+    assert.deepEqual(sources.sort(), ['ext:aa000001', 'migu'])
+  })
+
   await check('汇总：分组名带占位符整组丢弃；因此被清空的分组一并去掉，本来就空的分组保留', () => {
     const { groups: out, removed } = dropForeignReplaceTokens([
       { name: `组${T}`, dataList: [{ name: 'A', url: 'http://h/a.m3u8' }] },
