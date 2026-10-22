@@ -8,6 +8,7 @@ import { normalizeKey, logoMatchName } from "./channelNormalize.js"
 import { ensureLogoIndex, resolveLibraryLogo } from "./logoLibrary.js"
 import { renderOpts, needsOpts } from "./channelOpts.js"
 import { renderCatchupAttrs } from "./channelCatchup.js"
+import { hasReplaceToken } from "./replaceToken.js"
 import { refreshToken as enableTokenRefresh, host, pass, enableMigu, externalLogoBase, enableLogoCache } from "../config.js"
 import { finishLogoCache, hostedLogoUrl, prefetchLogos } from "./logoCache.js"
 import { packLogoUrl } from "./logoPack.js"
@@ -581,6 +582,10 @@ async function updatePE(hours) {
   // 单场赛事抓取失败的计数。收尾统一报一次，避免逐场刷屏。
   let matchFailed = 0
   let lastMatchError = ''
+  // 赛事名、队名、台标、pID 都来自咪咕接口（部分还是明文 http），带占位符 ${replace} 的场次不写：
+  // 输出时它会被换成带访问密码 / 令牌的本机地址（见 replaceToken.js）
+  let foreignTokenSkipped = 0
+  const hasForeignToken = (...parts) => parts.some(hasReplaceToken)
 
   // 缓存本次PE内容，供 regenerateOnly 模式使用
   let peM3uCache = ""
@@ -644,6 +649,10 @@ async function updatePE(hours) {
                 timeStr = peResultStartTimeStr.substring(11, 16)
               }
               const competitionDesc = `${data.competitionName} ${pkInfoTitle} ${replay.name} ${timeStr}`
+              if (hasForeignToken(pkInfoTitle, competitionDesc, data.competitionLogo, replay.pID)) {
+                foreignTokenSkipped++
+                continue
+              }
               const m3uLine = `#EXTINF:-1 tvg-id="${pkInfoTitle}" tvg-name="${competitionDesc}" tvg-logo="${data.competitionLogo}" source-ids="migu" group-title="体育-${relativeDate}",${competitionDesc}\n\${replace}/${replay.pID}\n`
               const txtLine = `${competitionDesc},\${replace}/${replay.pID}\n`
               // 写入赛事
@@ -662,6 +671,10 @@ async function updatePE(hours) {
             continue
           }
           const competitionDesc = `${data.competitionName} ${pkInfoTitle} ${live.name} ${live.startTimeStr.substring(11, 16)}`
+          if (hasForeignToken(pkInfoTitle, competitionDesc, data.competitionLogo, live.pID)) {
+            foreignTokenSkipped++
+            continue
+          }
           const m3uLine = `#EXTINF:-1 tvg-id="${pkInfoTitle}" tvg-name="${competitionDesc}" tvg-logo="${data.competitionLogo}" source-ids="migu" group-title="体育-${relativeDate}",${competitionDesc}\n\${replace}/${live.pID}\n`
           const txtLine = `${competitionDesc},\${replace}/${live.pID}\n`
           // 写入赛事
@@ -690,6 +703,9 @@ async function updatePE(hours) {
   // 重命名
   renameFileSync(interfacePath, interfacePath.replace(".bak", ""))
   renameFileSync(interfaceTXTPath, interfaceTXTPath.replace(".bak", ""))
+  if (foreignTokenSkipped > 0) {
+    printYellow(`体育赛事有 ${foreignTokenSkipped} 条带内部占位符 \${replace}，已跳过`)
+  }
   if (matchFailed > 0) {
     printYellow(`体育赛事有 ${matchFailed} 场抓取失败，本轮不含这些场次：${lastMatchError}`)
   }

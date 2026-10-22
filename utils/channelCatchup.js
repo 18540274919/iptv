@@ -19,6 +19,8 @@
  * 写进第三方模板等于把凭据发给第三方。
  */
 
+import { hasReplaceToken } from './replaceToken.js'
+
 // 主流播放器（Kodi IPTV Simple、TiviMate、OTT Navigator 等）认的回看模式，
 // 外加本项目用来关掉继承的 none。白名单外的模式丢弃，频道回退为继承订阅头。
 const MODES = new Set([
@@ -81,7 +83,7 @@ function cleanSource(raw) {
   if (typeof raw !== 'string') return undefined
   if (raw.length > MAX_SOURCE_LENGTH) return undefined
   if (/[",\r\n\u0000-\u001f\u007f-\u009f]/.test(raw)) return undefined
-  if (raw.includes('${replace}')) return undefined
+  if (hasReplaceToken(raw)) return undefined
   const value = raw.trim()
   if (!value || /\s/.test(value) || value.endsWith('=')) return undefined
   return value
