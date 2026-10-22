@@ -3,6 +3,7 @@ import builtInSourceManager from "./builtInSources.js"
 import { getExtractorManager } from "./extractorManager.js"
 import { printBlue, printGreen, printYellow, printRed } from "./colorOut.js"
 import { isLocalGroup } from "./playlistConfig.js"
+import { sanitizeCatchup } from "./channelCatchup.js"
 
 // 频道的「主来源」标识（issue #29/#68 按档过滤源）：
 // 外部/内置/抓取模块的频道在 getValidChannels 里带上 sourceId（ext:<id> / bi:<id> / xt:<id>），
@@ -35,6 +36,9 @@ function dedupeAllChannels(allChannels) {
             if (!prev.sourceIds.includes(extra)) prev.sourceIds.push(extra)
           }
         }
+        // 留下的那条没声明回看、被去掉的这条声明了：把声明接过来，否则同一路流
+        // 会因为列在前面的源没写而退回订阅头的咪咕模板（issue #190）
+        if (!Object.keys(sanitizeCatchup(prev)).length) Object.assign(prev, sanitizeCatchup(ch))
         continue
       }
       seen.set(key, ch)

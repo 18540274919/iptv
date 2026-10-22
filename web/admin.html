@@ -8337,6 +8337,10 @@
             // 切换模式时清掉本地导入内容/标记（订阅模式内再单独选「URL / 本地」）
             source.subscriptionContent = '';
             source.localImport = false;
+            // 「复制到分组」带来的回看声明只对原来那个地址有效，换了模式就不再适用（issue #190）
+            delete source.catchup;
+            delete source.catchupDays;
+            delete source.catchupSource;
 
             // 根据新模式清空对应的URL字段
             if (newMode === 'fetch') {
@@ -12251,7 +12255,11 @@ if(success){
                 showStatus('正在复制...', 'info');
                 const resp = await fetch(API_PREFIX + '/api/copy-channel', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: currentChannelDetail.name, url: currentChannelDetail.url, logo: currentChannelDetail.logo || '', groups })
+                    // 回看声明随副本带过去，否则副本会继承订阅头的咪咕回看模板（issue #190）
+                    body: JSON.stringify({
+                        name: currentChannelDetail.name, url: currentChannelDetail.url, logo: currentChannelDetail.logo || '', groups,
+                        catchup: currentChannelDetail.catchup, catchupDays: currentChannelDetail.catchupDays, catchupSource: currentChannelDetail.catchupSource
+                    })
                 });
                 const result = await resp.json();
                 if (result.success === false) { showStatus('复制失败: ' + (result.message || ''), 'error'); return; }

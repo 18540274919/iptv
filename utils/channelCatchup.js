@@ -42,6 +42,10 @@ const MAX_SOURCE_LENGTH = 1024
 // 回看天数上限。各家实际都在 1～30 天，给到一年足够宽松
 const MAX_DAYS = 365
 
+// 完整地址形式的模板（http://…、rtsp://…）只在 default 模式下能用：其余模式都把模板
+// 拼在直播地址后面，会拼出 `…/live.m3u8http://…` 这种死链
+const ABSOLUTE_URL = /^[a-z][a-z0-9+.-]*:\/\//i
+
 /** 从一行 EXTINF / EXTM3U 里取属性值；属性名前必须是行首、空白或逗号，免得 x-catchup 之类误中 */
 function attr(line, name) {
   const m = line.match(new RegExp(`(?:^|[\\s,])${name}="([^"]*)"`, 'i'))
@@ -87,13 +91,17 @@ function cleanSource(raw) {
  * 清洗一组回看声明，只保留合法字段；一个都不剩时返回空对象。
  * 也用来从频道对象上挑出回看字段展开进新对象：`...sanitizeCatchup(ch)`。
  * 模式为 none 时只留 catchup——关掉回看后天数和模板都没意义。
+ *
+ * 有完整地址模板却没有（合法的）模式时补成 default：不补的话频道会继承订阅头的
+ * catchup="append"，播放器把模板拼到直播地址后面，回看照样坏。
  */
 export function sanitizeCatchup(info) {
   if (!info || typeof info !== 'object') return {}
-  const catchup = cleanMode(info.catchup)
+  let catchup = cleanMode(info.catchup)
   if (catchup === 'none') return { catchup }
   const catchupDays = cleanDays(info.catchupDays)
   const catchupSource = cleanSource(info.catchupSource)
+  if (!catchup && catchupSource && ABSOLUTE_URL.test(catchupSource)) catchup = 'default'
   return {
     ...(catchup ? { catchup } : {}),
     ...(catchupDays ? { catchupDays } : {}),
@@ -103,23 +111,29 @@ export function sanitizeCatchup(info) {
 
 /**
  * 从一行 #EXTINF 或 #EXTM3U 解析回看声明（已清洗）。
- * 天数兼容 Kodi 等播放器也认的别名 tvg-rec / timeshift，catchup-days 优先。
+ * 兼容 Kodi IPTV Simple 也认的别名：模式 catchup-type，天数 tvg-rec / timeshift；正名优先。
  */
 export function parseCatchupAttrs(line) {
   if (typeof line !== 'string') return {}
   return sanitizeCatchup({
-    catchup: attr(line, 'catchup'),
+    catchup: ['catchup', 'catchup-type'].map(name => attr(line, name)).find(cleanMode),
     catchupDays: ['catchup-days', 'tvg-rec', 'timeshift'].map(name => attr(line, name)).find(cleanDays),
     catchupSource: attr(line, 'catchup-source'),
   })
 }
 
 /**
- * 合并订阅文件头与频道行的声明：逐字段以行内为准，行内没写的沿用文件头。
+ * 算出一个频道最终的回看声明：订阅文件头（已解析）与 #EXTINF 行逐字段合并，行内为准。
  * 常见写法是文件头写模式和模板、行内只写天数，只认行内会漏掉模板。
+ *
+ * SIPTV 老写法 `timeshift="N"` 在文件头和行内都没声明模式时，等于 catchup="shift" 加 N 天
+ * （Kodi 同此处理）。必须在这里显式补上：我们的订阅头带 catchup="append"，只写天数的话
+ * 播放器会走订阅头的咪咕模板。
  */
-export function mergeCatchup(header, line) {
-  return sanitizeCatchup({ ...sanitizeCatchup(header), ...sanitizeCatchup(line) })
+export function resolveCatchup(header, line) {
+  const merged = { ...sanitizeCatchup(header), ...parseCatchupAttrs(line) }
+  if (!merged.catchup && typeof line === 'string' && cleanDays(attr(line, 'timeshift'))) merged.catchup = 'shift'
+  return sanitizeCatchup(merged)
 }
 
 /**

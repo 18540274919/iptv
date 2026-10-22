@@ -6,7 +6,7 @@ import { enableBuiltInSubscriptions } from "../config.js"
 import { printBlue, printGreen, printGrey, printRed, printYellow } from "./colorOut.js"
 import { extractM3u8FromWeb, validateM3u8 } from "./webSourceExtractor.js"
 import { collectOptsUntilUrl, cleanUserAgent, withUserAgent } from "./channelOpts.js"
-import { parseCatchupAttrs, mergeCatchup, sanitizeCatchup } from "./channelCatchup.js"
+import { parseCatchupAttrs, resolveCatchup, sanitizeCatchup } from "./channelCatchup.js"
 import { FailureBackoff } from "./refreshBackoff.js"
 import fetch from 'node-fetch'
 
@@ -55,7 +55,7 @@ function parseM3uContent(content) {
     const topFirst = /\sx-top-first="(?:1|true)"/i.test(line)
     const name = extractExtinfName(line)
     // 源自带的回看模板 / 天数：不收下就只能继承订阅头的咪咕模板，回看静默失效（issue #190）
-    const catchup = mergeCatchup(headerCatchup, parseCatchupAttrs(line))
+    const catchup = resolveCatchup(headerCatchup, line)
 
     // 下一个非注释行是 URL；沿途的 #EXTVLCOPT 收进 opts（防盗链源靠它才播得动）
     const { opts, urlIndex } = collectOptsUntilUrl(lines, i)
@@ -675,7 +675,9 @@ class ExternalSourceManager {
         waitTime: sourceConfig.waitTime || 5000,
         headless: sourceConfig.headless !== false,
         ...sourceConfig.extractOptions
-      }
+      },
+      // 「复制到分组」的副本带上原频道的回看声明（issue #190），否则副本会继承订阅头的咪咕模板
+      ...sanitizeCatchup(sourceConfig)
     }
     
     this.sources.sources.push(newSource)
@@ -1020,7 +1022,8 @@ class ExternalSourceManager {
           url: source.m3u8Url,
           logo: source.logo || "",
           groupTitle: source.group,
-          sourceId: source.id ? `ext:${source.id}` : undefined   // 源归属（issue #29/#68）
+          sourceId: source.id ? `ext:${source.id}` : undefined,   // 源归属（issue #29/#68）
+          ...sanitizeCatchup(source)   // 复制来的副本保留原频道的回看声明（issue #190）
         })
       }
     })

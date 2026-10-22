@@ -9,8 +9,10 @@
  *
  * 不变量：
  *  - 解析：行内与订阅文件头的 catchup / catchup-days / catchup-source 都收下，
- *    逐字段行内优先；天数兼容别名 tvg-rec / timeshift；
+ *    逐字段行内优先；兼容 Kodi 的别名 catchup-type / tvg-rec / timeshift，SIPTV 的
+ *    timeshift="N" 在没声明模式时按 shift 处理；完整地址模板没模式时补成 default；
  *  - 贯通：订阅 → 频道 → interface.txt → 回读 → 配置档重生成 → 对外输出，一路不丢；
+ *    组内去重、「复制到分组」的副本也不丢；
  *  - 零回归：没有声明的频道不长出字段、输出逐字节不变、照旧继承订阅头；
  *    模块的 catchup="none"（issue #119）照旧；
  *  - 消毒：模式过白名单、天数只收正整数、模板含引号 / 换行 / 控制字符 / ${replace}
@@ -30,7 +32,8 @@ process.env.menableDisplayNameUnify = 'false'
 
 const { parsePlaylistContent, ExternalSourceManager } = await import('../utils/externalSources.js')
 const { generateM3u8, parseInterfaceTxt } = await import('../utils/playlistConfig.js')
-const { parseCatchupAttrs, mergeCatchup, sanitizeCatchup, renderCatchupAttrs } = await import('../utils/channelCatchup.js')
+const { parseCatchupAttrs, resolveCatchup, sanitizeCatchup, renderCatchupAttrs } = await import('../utils/channelCatchup.js')
+const { dedupeAllChannels } = await import('../utils/channelMerger.js')
 const { interfaceStr } = await import('../utils/appUtils.js')
 
 let passed = 0
@@ -178,9 +181,44 @@ try {
     assert.equal(sanitizeCatchup({ catchupSource: ` ${PLAYSEEK} ` }).catchupSource, PLAYSEEK)
   })
 
-  await check('mergeCatchup：文件头 none、行内开启时以行内为准', () => {
-    assert.deepEqual(mergeCatchup({ catchup: 'none' }, { catchup: 'append', catchupDays: 7 }), { catchup: 'append', catchupDays: 7 })
-    assert.deepEqual(mergeCatchup({ catchup: 'none' }, { catchupDays: 7 }), { catchup: 'none' })
+  await check('resolveCatchup：文件头 none、行内开启时以行内为准', () => {
+    assert.deepEqual(resolveCatchup({ catchup: 'none' }, '#EXTINF:-1 catchup="append" catchup-days="7",A'), { catchup: 'append', catchupDays: 7 })
+    assert.deepEqual(resolveCatchup({ catchup: 'none' }, '#EXTINF:-1 catchup-days="7",A'), { catchup: 'none' })
+  })
+
+  await check('解析：模式兼容 Kodi 的别名 catchup-type，catchup 优先（文件头、行内都认）', () => {
+    assert.equal(parseCatchupAttrs('#EXTINF:-1 catchup-type="flussonic",A').catchup, 'flussonic')
+    assert.equal(parseCatchupAttrs('#EXTINF:-1 catchup="append" catchup-type="shift",A').catchup, 'append')
+    const [ch] = parsePlaylistContent([
+      `#EXTM3U catchup-type="append" catchup-source="${PLAYSEEK}"`,
+      '#EXTINF:-1 group-title="g",A',
+      'http://h/a.m3u8',
+    ].join('\n'))
+    assert.equal(ch.catchup, 'append')
+    assert.equal(ch.catchupSource, PLAYSEEK)
+  })
+
+  await check('完整地址模板没有合法模式时补成 default，不让订阅头的 append 把它拼到直播地址后面', () => {
+    const TVOD = 'http://cdn.example.com/tvod/a.m3u8?start={utc}&end={utcend}'
+    for (const line of [
+      `#EXTINF:-1 catchup-days="3" catchup-source="${TVOD}",A`,
+      `#EXTINF:-1 catchup="flussonic-dash" catchup-source="${TVOD}",A`,   // 白名单外的模式
+    ]) {
+      const [ch] = parsePlaylistContent(`${line}\nhttp://cdn.example.com/live/a.m3u8`)
+      assert.equal(ch.catchup, 'default', line)
+      assert.ok(renderCatchupAttrs(ch).startsWith(' catchup="default"'), renderCatchupAttrs(ch))
+    }
+    // 查询串模板不补：它本来就是给 append 用的，交给文件头 / 订阅头的模式
+    assert.equal(parseCatchupAttrs(`#EXTINF:-1 catchup-source="${PLAYSEEK}",A`).catchup, undefined)
+  })
+
+  await check('SIPTV 写法：只有 timeshift="N" 时按 shift 加 N 天；已有模式时只取天数；tvg-rec 只当天数', () => {
+    const parse = (header, line) => parsePlaylistContent(`${header}\n${line}\nhttp://h/a.m3u8`)[0]
+    assert.deepEqual(sanitizeCatchup(parse('#EXTM3U', '#EXTINF:-1 timeshift="7" group-title="g",A')), { catchup: 'shift', catchupDays: 7 })
+    assert.deepEqual(sanitizeCatchup(parse(`#EXTM3U catchup="append" catchup-source="${PLAYSEEK}"`, '#EXTINF:-1 timeshift="7",A')),
+      { catchup: 'append', catchupDays: 7, catchupSource: PLAYSEEK })
+    assert.deepEqual(sanitizeCatchup(parse('#EXTM3U', '#EXTINF:-1 tvg-rec="3",A')), { catchupDays: 3 })
+    assert.equal(renderCatchupAttrs(parse('#EXTM3U', '#EXTINF:-1 timeshift="7",A')), ' catchup="shift" catchup-days="7"')
   })
 
   // ---- 生成 ----
@@ -247,6 +285,32 @@ try {
     const ch = mgr.getValidChannels().flatMap(g => g.dataList).find(c => c.name === '回看台')
     assert.equal('catchupSource' in ch, false)
     assert.equal(ch.catchup, 'append')
+  })
+
+  await check('「复制到分组」的直连副本带上回看声明，坏模板照样过消毒', () => {
+    mgr.addSource({ name: '回看台副本', group: '副本组', m3u8Url: 'http://h/catchup.m3u8', enabled: true, autoRefresh: false,
+      catchup: 'append', catchupDays: 7, catchupSource: PLAYSEEK })
+    mgr.addSource({ name: '普通台副本', group: '副本组', m3u8Url: 'http://h/plain.m3u8', enabled: true, autoRefresh: false })
+    mgr.addSource({ name: '坏副本', group: '副本组', m3u8Url: 'http://h/bad.m3u8', enabled: true, autoRefresh: false,
+      catchup: 'append', catchupSource: '?a=1"x' })
+    const byName = Object.fromEntries(mgr.getValidChannels().flatMap(g => g.dataList).map(c => [c.name, c]))
+    assert.deepEqual(sanitizeCatchup(byName['回看台副本']), { catchup: 'append', catchupDays: 7, catchupSource: PLAYSEEK })
+    assert.equal('catchup' in byName['普通台副本'], false, '没声明的副本不长出字段')
+    assert.deepEqual(sanitizeCatchup(byName['坏副本']), { catchup: 'append' })
+  })
+
+  await check('组内去重：留下的那条没声明回看时，接过被去掉那条的声明；已有声明的不覆盖', () => {
+    const groups = [{ name: 'G', dataList: [
+      { name: 'X', url: 'http://op/x.m3u8', sourceId: 'ext:a' },
+      { name: 'X', url: 'http://op/x.m3u8', sourceId: 'ext:b', catchup: 'append', catchupSource: PLAYSEEK },
+      { name: 'Y', url: 'http://op/y.m3u8', sourceId: 'ext:a', catchup: 'none' },
+      { name: 'Y', url: 'http://op/y.m3u8', sourceId: 'ext:b', catchup: 'append', catchupSource: PLAYSEEK },
+    ] }]
+    assert.equal(dedupeAllChannels(groups), 2)
+    const [x, y] = groups[0].dataList
+    assert.deepEqual(sanitizeCatchup(x), { catchup: 'append', catchupSource: PLAYSEEK })
+    assert.deepEqual(x.sourceIds, ['ext:a', 'ext:b'])
+    assert.deepEqual(sanitizeCatchup(y), { catchup: 'none' })
   })
 
   // interface.txt 按 updateData 的写盘格式（含内部属性 source-ids）
