@@ -32,6 +32,8 @@ import { enableExtractors } from "../config.js"
 
 const CONFIG_FILE = 'extractors.json'
 const CACHE_FILE = 'extractor-cache.json'
+// 官方入口持续 WAF 405，2026-10-22 移除。加载或导入旧备份时同步清掉配置与缓存。
+const RETIRED_MODULE_IDS = ['beidou']
 
 // 单个模块一轮的墙钟上限。模块内部也该自己设超时，这层是兜底——外部源那边
 // 整轮没有任何时间上限，一个慢源能把后面全拖住。
@@ -363,6 +365,17 @@ class ExtractorManager {
     // 磁盘上的配置可能整份换过（备份导入走 reload→load）：把所有模块的配置代数
     // +1，作废还在飞的抓取轮——它们跑的是换盘前的配置（见 #runOne）。
     let cacheChanged = false
+    let configChanged = false
+    for (const id of RETIRED_MODULE_IDS) {
+      if (Object.hasOwn(this.config.modules, id)) {
+        delete this.config.modules[id]
+        configChanged = true
+      }
+      if (Object.hasOwn(this.cache.modules, id)) {
+        delete this.cache.modules[id]
+        cacheChanged = true
+      }
+    }
     for (const module of listModules()) {
       this.configGen.set(module.id, (this.configGen.get(module.id) || 0) + 1)
       const cacheEntry = this.#cacheEntry(module.id)
@@ -388,6 +401,7 @@ class ExtractorManager {
       }
     }
     this.loaded = true
+    if (configChanged && !this.corrupt) this.#saveConfig()
     if (cacheChanged) this.#saveCache()
     // 放在 load() 而不是启动流程里：配置导入会调 reload()，用户导入一份「搬家之前
     // 导出的备份」时，包里 extractors.json 没有这些字段、system-config.json 有，

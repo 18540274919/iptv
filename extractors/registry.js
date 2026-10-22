@@ -151,7 +151,6 @@ import bilibiliLive from './bilibili-live/index.js'
 import douyinLive from './douyin-live/index.js'
 import asianLive from './asian-live/index.js'
 import anhui from './anhui/index.js'
-import beidou from './beidou/index.js'
 import beijing from './beijing/index.js'
 import chongqing from './chongqing/index.js'
 import sichuan from './sichuan/index.js'
@@ -235,7 +234,6 @@ const MODULES = [
   huyaLive,
   douyuLive,
   anhui,
-  beidou,
   beijing,
   chongqing,
   sichuan,
