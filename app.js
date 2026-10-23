@@ -1281,6 +1281,8 @@ async function handleRequest(req, res) {
   if (localMediaModule) {
     const local = await localMediaModule.handleLocalRequest({
       path: localMediaPath,
+      // 带查询串的原始路由（弹幕接口要 ?cursor= / ?part=）；path 仍是去掉查询串的
+      url: routeUrl,
       method,
       headers,
       accessPrefix,

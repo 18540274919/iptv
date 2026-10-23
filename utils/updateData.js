@@ -20,6 +20,7 @@ import { dataPath } from "./paths.js"
 import { readMiguTokenState, markMiguTokenRefreshed, MIGU_TOKEN_REFRESH_INTERVAL_MS } from "./miguTokenState.js"
 import { readFileSync, existsSync, statSync } from "node:fs"
 import { announcementM3uEntry, announcementTxtEntry } from "./announcement.js"
+import miguDanmaku from "../extractors/migu/danmaku.js"
 
 const PE_CACHE_PATH = dataPath('pe-cache.json')
 
@@ -570,6 +571,8 @@ async function updatePE(hours) {
   }
   printGreen("体育直播频道获取成功")
   // console.dir(datas, { depth: null })
+  // 直播弹幕的聊天室 ID 随赛事一起记（见 extractors/migu/danmaku.js）：整轮抓完才替换上一份
+  miguDanmaku.beginRound()
 
   copyFileSync(dataPath('interface.txt'), dataPath('interface.txt.bak'), 0)
   copyFileSync(dataPath('interfaceTXT.txt'), dataPath('interfaceTXT.txt.bak'), 0)
@@ -677,6 +680,10 @@ async function updatePE(hours) {
           }
           const m3uLine = `#EXTINF:-1 tvg-id="${pkInfoTitle}" tvg-name="${competitionDesc}" tvg-logo="${data.competitionLogo}" source-ids="migu" group-title="体育-${relativeDate}",${competitionDesc}\n\${replace}/${live.pID}\n`
           const txtLine = `${competitionDesc},\${replace}/${live.pID}\n`
+          // 聊天室 ID 只在 basic-data 里有；没有的场次（少数无聊天室的转播）就不带弹幕
+          if (peResult.body.roomId) {
+            miguDanmaku.recordRoom(live.pID, { roomId: peResult.body.roomId, title: competitionDesc, mgdbId: data.mgdbId, endTime: peResult.body.endTime })
+          }
           // 写入赛事
           appendFileSync(interfacePath, m3uLine)
           appendFileSync(interfaceTXTPath, txtLine)
@@ -692,6 +699,9 @@ async function updatePE(hours) {
     }
     printGreen(`日期 ${date} 更新完成！`)
   }
+
+  // 聊天室记录与赛事缓存一起换代；快速模式恢复赛事缓存时沿用上次落盘的记录
+  miguDanmaku.commitRound()
 
   // 保存PE缓存，供 regenerateOnly 模式直接复用
   try {

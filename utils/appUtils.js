@@ -10,6 +10,7 @@ import { getExtractorManager, getModuleConfig } from "./extractorManager.js";
 import { omitPlayerOnlyOpts } from "./channelOpts.js";
 import { fetchUpstreamResponse } from "./hlsProxy.js";
 import { checkModuleBurst } from "./clientScanGuard.js";
+import miguDanmaku from "../extractors/migu/danmaku.js";
 
 /**
  * 清空各模块的解析缓存。
@@ -272,6 +273,11 @@ function interfaceStr(url, headers, urlUserId, urlToken, profile, accessPrefix, 
   if (urlUserId != (miguAccount.userId || "") && urlToken != (miguAccount.token || "")) {
     replaceHost = `${replaceHost}/${urlUserId}/${urlToken}`
   }
+
+  // 体育赛事直播弹幕（DANMAKU.md）：有聊天室的赛事条目补 danmaku-url="${replace}/danmaku/migu/<pID>"。
+  // 必须在下面 relay/proxy 改写之前（它只认 ${replace}/纯数字 的地址行），也在 ${replace} 展开之前，
+  // 这样弹幕地址与频道地址同源、同访问前缀——Ceau 只认同源的弹幕地址。TXT 没有属性位，不处理。
+  if (url !== '/txt') result.content = miguDanmaku.decorateM3u(`${result.content}`)
 
   // 兼容版订阅（?relay=1，issue #98）：频道地址改为 /relay/<pid> 清单直出路径，
   // 供不跟随 302 跳转的播放器（极空间极影视、部分老电视盒）使用；
