@@ -2685,9 +2685,9 @@ check('看看新闻：可播放的 v1 请求验签与官网双 MD5 算法固定�
   })
   assert.equal(headers.timestamp, 1720000000)
   assert.equal(headers['Api-Version'], 'v1')
-  assert.equal(headers.version, '2.42.15')
+  assert.equal(headers.version, '2.45.2')
   assert.equal(headers['m-uuid'], '0123456789ABCDEFGHIJK')
-  assert.equal(headers.sign, '91365fae251585050ea90559bea0f3ea')
+  assert.equal(headers.sign, '3128fcbe0a188dbe4da6d255bd80628a')
 })
 
 check('看看新闻：只收录官网 8 个正式上海频道，规范命名并固定全代理', () => {
