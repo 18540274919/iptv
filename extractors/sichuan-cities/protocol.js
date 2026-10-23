@@ -89,6 +89,32 @@ export function ziyangUrl(payload, channel) {
   return officialMedia(row.url, channel)
 }
 
+export function deyangUrl(payload, channel) {
+  const row = payload?.code === 1 && payload.status === 200 && payload.data?.find(row => String(row.id) === channel.contentId)
+  if (!row || row.mark !== 'tv' || row.videoStatus !== 1) throw new Error('德阳客户端没有本频道直播')
+  // 官方 H5 明确提供的流；不从 RTMP 字段推测或拼接。
+  return officialMedia(row.streamH5, channel)
+}
+
+/** 攀枝花官方现用 H5 的匿名请求签名；配置运行时读取，不保存 apiSign。 */
+export function panzhihuaRequest(config, channel, now = Date.now(), fields = { type: '1' }) {
+  if (config?.id !== channel.siteId || config.domain !== 'https://www.pzhxinwen.cn'
+      || typeof config.apiSign !== 'string' || !/^[a-zA-Z0-9]{16,128}$/.test(config.apiSign)) {
+    throw new Error('攀枝花客户端公共配置异常')
+  }
+  const params = { ...fields, siteId: channel.siteId, appId: '', userId: '', currentTimeMillis: String(now) }
+  params.signature = createHash('md5').update([...Object.values(params), config.apiSign].sort().join('')).digest('hex')
+  return new URLSearchParams(params).toString()
+}
+
+export function panzhihuaUrl(payload, channel) {
+  const row = payload?.status === '200' && payload.list?.find(row => row.id === channel.contentId)
+  if (!row || row.siteId !== channel.siteId || row.type !== 1 || row.status !== 1 || row.checkedStatus !== 1) {
+    throw new Error('攀枝花客户端没有本频道直播')
+  }
+  return officialMedia(row.url, channel)
+}
+
 export function abaUrl(payload, channel) {
   if (payload?.code !== 0 || !Array.isArray(payload.data)) throw new Error('阿坝官方目录异常')
   for (const component of payload.data) {

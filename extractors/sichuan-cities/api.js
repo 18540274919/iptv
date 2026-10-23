@@ -1,7 +1,7 @@
 import { proxyAwareFetch } from '../../utils/systemProxy.js'
 import { CHANNELS, CHANNEL_BY_REF, CLOUD_API, ABA_TENANT, ABA_NODE, BAZHONG_CATALOG,
   officialMedia, mediaHeaders, needsProxy, playUrlFromHtml, nmipUrl, bazhongUrl, abaUrl, signAbaUrl, readOfficial, parseJson,
-  dfsxContent, dfsxComponent, ziyangUrl } from './protocol.js'
+  dfsxContent, dfsxComponent, ziyangUrl, deyangUrl, panzhihuaRequest, panzhihuaUrl } from './protocol.js'
 
 export { CHANNELS }
 export const claimsRef = ref => typeof ref === 'string' && CHANNEL_BY_REF.has(ref)
@@ -76,6 +76,14 @@ export function createResolver({ fetchImpl = proxyAwareFetch, now = Date.now } =
             url = channel.sourceField === 'link' ? officialMedia(fields.link_url, channel)
               : dfsxComponent(await json(`${channel.apiBase}/components`, { method: 'POST',
                 headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lives: [channel.liveId] }) }), channel)
+            break
+          }
+          case 'deyang': url = deyangUrl(await json('https://api.deyangnews.cn/cms-api/broadcast/list?mark=tv'), channel); break
+          case 'panzhihua': {
+            const config = await json('https://www.pzhxinwen.cn/json/config/site.sitejson')
+            url = panzhihuaUrl(await json('https://www.pzhxinwen.cn/rftapi/api/rft/getLiveList', { method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+              body: panzhihuaRequest(config, channel, Math.floor(now() / 30000) * 30000) }), channel)
             break
           }
           case 'ziyang': url = ziyangUrl(await json(`https://appmgr.zyrb.com.cn/tvradio/Tvfront/getTvInfo?tv_id=${channel.contentId}`), channel); break

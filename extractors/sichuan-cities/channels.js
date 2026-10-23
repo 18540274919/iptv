@@ -82,6 +82,18 @@ const rows = [
     page: 'https://www.zyrb.com.cn/tvradio_dvw/tv_detail_dvw.html?domain=https://appmgr.zyrb.com.cn&tv_id=1',
     media: 'https://zytvpull.zyrb.com.cn/live/sobeystream_1752554871.m3u8',
     logo: 'https://zyobs.zyrb.com.cn/frame1/2025/03/20/7e418e7b-3c3c-a886-9982-d4c6aeb7ae92.png?x-image-process=image/watermark%2Cimage_eHdjbXJtdHB0LzIwMjQvNS8yMi9jNjFjZDZkYy02ZTkxLWViMzItOTEyMS1jOTc3ZjJjNjk4NjcucG5n%2Cmp_10%2Cg_br%2Ct_100%2Cx_10%2Cy_6' },
+  { id: 'dytv1', city: '德阳', name: '德阳新闻综合', kind: 'deyang', appSource: true, contentId: '1',
+    page: 'https://download.deyangnews.cn/', media: 'https://zb.dywang.cn/live/xwpd.m3u8',
+    logo: 'https://web.deyangnews.cn/img/firstpage/99dfe944e054e7c35538da4f01cd33c.png' },
+  { id: 'pzhtv1', city: '攀枝花', name: '攀枝花新闻综合', kind: 'panzhihua', appSource: true,
+    contentId: 'd1f8066886ea4ed1a4f55acea5ef42bc', siteId: '4399a78804af48b285f25614750a77fe',
+    page: 'https://www.pzhxinwen.cn/html/rft/live.html?channelId=d1f8066886ea4ed1a4f55acea5ef42bc&type=1&siteId=4399a78804af48b285f25614750a77fe',
+    media: 'https://pzhlive.pzhxinwen.cn/pzhxw/pzh_xw.m3u8',
+    logo: 'https://www.pzhxinwen.cn/upload/app/image/44fc3ca8411b47f3b0206dbf66eeaec3.png' },
+  { id: 'nctv1', city: '南充', name: '南充综合', kind: 'cloud', appSource: true, contentId: '1962907990741680130',
+    nodeId: '1835203958696394753', tenant: 'TjEzMDA=', signed: true, dispatch: true, page: 'https://rmt.cnncw.cn/',
+    media: 'https://ncpull.cnncw.cn/live/2be69226019c10009bf1323e00000000/playlist.m3u8',
+    logo: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f3/b4/7a/f3b47ab2-32cd-f63d-ba32-eccf30f73801/AppIcon-0-0-1x_U007emarketing-0-6-0-0-85-220.png/512x512bb.jpg' },
 
 ]
 

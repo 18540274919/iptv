@@ -466,6 +466,15 @@
    "updated": "2026-09-30",
    "width": 189
   },
+  "德阳新闻综合": {
+   "file": "德阳新闻综合.png",
+   "hash": "77eabb19c9",
+   "height": 55,
+   "origin": "sichuan-cities",
+   "source": "https://web.deyangnews.cn/img/firstpage/99dfe944e054e7c35538da4f01cd33c.png",
+   "updated": "2026-10-23",
+   "width": 256
+  },
   "第一财经": {
    "file": "第一财经.png",
    "hash": "52a0dcf95e",
@@ -2166,6 +2175,18 @@
    "updated": "2026-09-25",
    "width": 256
   },
+  "南充综合": {
+   "file": "南充综合.png",
+   "hash": "b269587806",
+   "height": 256,
+   "origin": "sichuan-cities",
+   "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f3/b4/7a/f3b47ab2-32cd-f63d-ba32-eccf30f73801/AppIcon-0-0-1x_U007emarketing-0-6-0-0-85-220.png/512x512bb.jpg",
+   "updated": "2026-10-23",
+   "width": 256,
+   "kind": "platform",
+   "page": "https://apps.apple.com/cn/app/id1377500518",
+   "note": "南充融媒官方 App 在 Apple 商店提供的融媒标识；当前电视目录缩略图为封面。"
+  },
   "南方影视": {
    "file": "南方影视.png",
    "hash": "ad7e9668c6",
@@ -2446,6 +2467,15 @@
    "origin": "yunnan",
    "source": "https://cdnproduce.yntv.cn/ysxw/HDZB_FABU/8805AF7347544A9C8ECCC6789DB4A2C2/702F785952DD4829BB0DB63CE6A8B0EE.png",
    "updated": "2026-09-25",
+   "width": 256
+  },
+  "攀枝花新闻综合": {
+   "file": "攀枝花新闻综合.png",
+   "hash": "6e77d9050c",
+   "height": 256,
+   "origin": "sichuan-cities",
+   "source": "https://www.pzhxinwen.cn/upload/app/image/44fc3ca8411b47f3b0206dbf66eeaec3.png",
+   "updated": "2026-10-23",
    "width": 256
   },
   "彭州电视台": {
@@ -5431,6 +5461,7 @@
   "sichuan-cities/sichuan-cities-abtv2": "阿坝藏语综合",
   "sichuan-cities/sichuan-cities-bztv1": "巴中综合",
   "sichuan-cities/sichuan-cities-bztv2": "巴中文旅生活",
+  "sichuan-cities/sichuan-cities-dytv1": "德阳新闻综合",
   "sichuan-cities/sichuan-cities-dztv1": "达州新闻综合",
   "sichuan-cities/sichuan-cities-dztv2": "达州文化生活",
   "sichuan-cities/sichuan-cities-gytv1": "广元新闻综合",
@@ -5442,7 +5473,9 @@
   "sichuan-cities/sichuan-cities-lztv3": "泸州科教生活",
   "sichuan-cities/sichuan-cities-mstv1": "眉山综合",
   "sichuan-cities/sichuan-cities-mytv1": "绵阳新闻综合",
+  "sichuan-cities/sichuan-cities-nctv1": "南充综合",
   "sichuan-cities/sichuan-cities-njtv1": "内江综合",
+  "sichuan-cities/sichuan-cities-pzhtv1": "攀枝花新闻综合",
   "sichuan-cities/sichuan-cities-sntv1": "遂宁综合",
   "sichuan-cities/sichuan-cities-tctv": "达州通川",
   "sichuan-cities/sichuan-cities-yatv1": "雅安新闻综合",
