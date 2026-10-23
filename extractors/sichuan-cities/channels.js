@@ -45,9 +45,47 @@ const rows = [
     page: 'https://www.aba-news.com.cn/',
     media: 'https://apppull.aba-news.com.cn/live/be57fb5401901000b611a82100000000/playlist.m3u8',
     logo: 'https://rmt.aba-news.com.cn/file/c3200/2022/05/09/7c8e1b4d-3e0e-440d-b688-fd6564f1250c_one.jpg' },
+  // 2026-10-23 继续从官方 App 的公开入口验证，均经过分片与音视频解码。
+  { id: 'gytv1', city: '广元', name: '广元新闻综合', kind: 'dfsx', appSource: true, contentId: '1006352', liveId: 100999,
+    apiBase: 'https://api.dzsm.com/cms/public', sourceField: 'component', page: 'https://m.dzsm.com/cms/a/1006352/content',
+    media: 'https://m3u8.channel.dzsm.com/nmip-media/channellive/channel100999/playlist.m3u8',
+    logo: 'https://file.dzsm.com/20200401/b96fe6add1e437fc74d208f88ef4f524/b96fe6add1e437fc74d208f88ef4f524.jpg' },
+  { id: 'ybtv1', city: '宜宾', name: '宜宾新闻综合', kind: 'dfsx', appSource: true, contentId: '43174882', liveId: 100134,
+    apiBase: 'https://m.yibinrm.cn/v2/cms/public', sourceField: 'link', page: 'https://m.yibinrm.cn/cms/a/43174882/content',
+    media: 'https://aliplay.yibinrm.cn/live/1.m3u8',
+    logo: 'https://alifile.yibinrm.cn/general/2026-06-22/A83BC3B3CC3B054DE7E81013D319633E.jpg' },
+  { id: 'ybtv2', city: '宜宾', name: '宜宾科教文旅', kind: 'dfsx', appSource: true, contentId: '43174964', liveId: 100989,
+    apiBase: 'https://m.yibinrm.cn/v2/cms/public', sourceField: 'link', page: 'https://m.yibinrm.cn/cms/a/43174964/content',
+    media: 'https://aliplay.yibinrm.cn/live/2.m3u8',
+    logo: 'https://alifile.yibinrm.cn/general/2026-06-22/A83BC3B3CC3B054DE7E81013D319633E.jpg' },
+  { id: 'lstv1', city: '凉山', name: '凉山新闻综合', kind: 'dfsx', appSource: true, contentId: '1052185', liveId: 114103,
+    apiBase: 'https://m.i0834.cn/v2/cms/public', sourceField: 'component', page: 'https://m.i0834.cn/cms/a/1052185/content',
+    media: 'https://tvlive.i0834.cn/nmip-media/channellive/channel114103/playlist.m3u8',
+    logo: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/db/ec/a5/dbeca571-2657-09db-9dc5-20b0f5a811d8/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg' },
+  { id: 'lstv2', city: '凉山', name: '凉山彝语综合', kind: 'dfsx', appSource: true, contentId: '1056318', liveId: 115044,
+    apiBase: 'https://m.i0834.cn/v2/cms/public', sourceField: 'component', page: 'https://m.i0834.cn/cms/a/1056318/content',
+    media: 'https://tvlive.i0834.cn/nmip-media/channellive/channel115044/playlist.m3u8',
+    logo: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/db/ec/a5/dbeca571-2657-09db-9dc5-20b0f5a811d8/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg' },
+  { id: 'yatv1', city: '雅安', name: '雅安新闻综合', kind: 'dfsx', appSource: true, contentId: '1030244', liveId: 100028,
+    apiBase: 'https://m.yunxya.com/v2/cms/public', sourceField: 'link', page: 'https://m.yunxya.com/cms/a/1030244/content',
+    media: 'http://m3u8channel.yunxya.com/nmip-media/channellive/channel100966/playlist.m3u8',
+    logo: 'https://file.yunxya.com/cms/2023-03-29/30344769/05971C9DCEF47BA190455462C6A0CA21.png' },
+  { id: 'lshantv1', city: '乐山', name: '乐山新闻综合', kind: 'cloud', appSource: true, contentId: '1742401486903521281',
+    nodeId: '1817400274017325058', tenant: 'YTExMDA=', signed: false, dispatch: true, page: 'https://rmt.leshan.cn/',
+    media: 'http://pwpull.leshan.cn/live/21609091019110008654ed1a00000000/playlist.m3u8',
+    logo: 'https://rmt.leshan.cn/file/a1100/2024/01/03/872b1304-72c2-40af-9f5f-e746ed55508a_one.jpg' },
+  { id: 'mstv1', city: '眉山', name: '眉山综合', kind: 'cloud', appSource: true, contentId: '1867078614933381121',
+    nodeId: '1867459318922403842', tenant: 'bTE0MDA=', signed: true, dispatch: true, page: 'https://mszy.scmstv.cn/',
+    media: 'http://mspull.scmstv.cn/live/4c0403ef019d1000d9803a5e00000000/playlist.m3u8',
+    logo: 'https://mszy.scmstv.cn/file/m1400/2024/12/12/1867078325618192386.png' },
+  { id: 'zytv1', city: '资阳', name: '资阳新闻综合', kind: 'ziyang', appSource: true, contentId: '1',
+    page: 'https://www.zyrb.com.cn/tvradio_dvw/tv_detail_dvw.html?domain=https://appmgr.zyrb.com.cn&tv_id=1',
+    media: 'https://zytvpull.zyrb.com.cn/live/sobeystream_1752554871.m3u8',
+    logo: 'https://zyobs.zyrb.com.cn/frame1/2025/03/20/7e418e7b-3c3c-a886-9982-d4c6aeb7ae92.png?x-image-process=image/watermark%2Cimage_eHdjbXJtdHB0LzIwMjQvNS8yMi9jNjFjZDZkYy02ZTkxLWViMzItOTEyMS1jOTc3ZjJjNjk4NjcucG5n%2Cmp_10%2Cg_br%2Ct_100%2Cx_10%2Cy_6' },
+
 ]
 
 // 独立频道图优先；没有频道图的使用所属广电/融媒的官方标识，出处另记 README 与内置包。
-// 绵阳公共、科技与遂宁官网注释掉的旧文化生活源不收录；眉山当前电视/广播目录只有广播。
+// 绵阳公共、科技、雅安文化生活与遂宁注释掉的旧源不收录；区县扩展另行核验。
 export const CHANNELS = Object.freeze(rows.map(row => Object.freeze({ ...row, ref: `sichuan-cities-${row.id}` })))
 export const CHANNEL_BY_REF = new Map(CHANNELS.map(row => [row.ref, row]))

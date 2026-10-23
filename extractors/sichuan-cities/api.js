@@ -1,6 +1,7 @@
 import { proxyAwareFetch } from '../../utils/systemProxy.js'
 import { CHANNELS, CHANNEL_BY_REF, CLOUD_API, ABA_TENANT, ABA_NODE, BAZHONG_CATALOG,
-  officialMedia, mediaHeaders, needsProxy, playUrlFromHtml, nmipUrl, bazhongUrl, abaUrl, signAbaUrl, readOfficial, parseJson } from './protocol.js'
+  officialMedia, mediaHeaders, needsProxy, playUrlFromHtml, nmipUrl, bazhongUrl, abaUrl, signAbaUrl, readOfficial, parseJson,
+  dfsxContent, dfsxComponent, ziyangUrl } from './protocol.js'
 
 export { CHANNELS }
 export const claimsRef = ref => typeof ref === 'string' && CHANNEL_BY_REF.has(ref)
@@ -14,7 +15,7 @@ export function createResolver({ fetchImpl = proxyAwareFetch, now = Date.now } =
   const cache = new Map()
   const dispatchCache = new Map()
   async function read(url, options) {
-    const key = `${url}|${options.method || 'GET'}|${options.body || ''}`
+    const key = `${url}|${options.method || 'GET'}|${options.body || ''}|${options.headers?.tenant || ''}`
     const previous = cache.get(key)
     if (previous?.expires > now()) return previous.text
     if (previous?.pending) return previous.pending
@@ -70,6 +71,25 @@ export function createResolver({ fetchImpl = proxyAwareFetch, now = Date.now } =
             break
           }
           case 'bazhong': url = bazhongUrl(await json(BAZHONG_CATALOG), channel); break
+          case 'dfsx': {
+            const fields = dfsxContent(await json(`${channel.apiBase}/v2/contents/${channel.contentId}`), channel)
+            url = channel.sourceField === 'link' ? officialMedia(fields.link_url, channel)
+              : dfsxComponent(await json(`${channel.apiBase}/components`, { method: 'POST',
+                headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lives: [channel.liveId] }) }), channel)
+            break
+          }
+          case 'ziyang': url = ziyangUrl(await json(`https://appmgr.zyrb.com.cn/tvradio/Tvfront/getTvInfo?tv_id=${channel.contentId}`), channel); break
+          case 'cloud': {
+            const headers = { tenant: channel.tenant, 'Content-Type': 'application/json' }
+            const catalog = await json(`${CLOUD_API}layout/client/nodeClient/node`, { method: 'POST', headers,
+              body: JSON.stringify({ nodeId: channel.nodeId }) })
+            url = abaUrl(catalog, channel)
+            if (channel.signed) {
+              cloudConfig = await json(`${CLOUD_API}content/client/unifiedConfiguration/getUnifiedConfiguration`, { headers })
+              url = signAbaUrl(url, cloudConfig, channel, now())
+            }
+            break
+          }
           case 'neijiang': {
             const html = await request(channel.page)
             const live = html.match(/<input\b[^>]*id="live_id"[^>]*value="([^"]+)"/i)?.[1]
@@ -96,7 +116,7 @@ export function createResolver({ fetchImpl = proxyAwareFetch, now = Date.now } =
           default: throw new Error('未知的官方入口类型')
         }
         let manifestText
-        if (channel.id === 'mytv1' || channel.kind === 'aba') {
+        if (channel.id === 'mytv1' || channel.kind === 'aba' || channel.dispatch) {
           const entryUrl = url
           for (let attempt = 0; attempt < 2; attempt++) {
             url = await dispatch(entryUrl, channel, options)

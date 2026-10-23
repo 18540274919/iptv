@@ -17,7 +17,7 @@ function publicIPv4(host) {
     || (a === 192 && [0, 168].includes(b)) || (a === 198 && [18, 19].includes(b)))
 }
 
-export const needsProxy = channel => ['遂宁', '达州'].includes(channel.city)
+export const needsProxy = channel => ['遂宁', '达州', '凉山', '资阳'].includes(channel.city)
 export function mediaHeaders(raw, channel) {
   officialMedia(raw, channel, { asset: true })
   return { 'User-Agent': 'Mozilla/5.0', Referer: channel.page, Origin: new URL(channel.page).origin }
@@ -31,8 +31,8 @@ export function officialMedia(raw, channel, { asset = false } = {}) {
   const dir = expected.pathname.slice(0, expected.pathname.lastIndexOf('/') + 1)
   // 绵阳/阿坝官方主清单下发网宿节点：/原始域名/live/本台ID/...。
   // 不钉死会轮换的节点 IP/随机域名；仅媒体阶段允许这个 CDN 与同台完整前缀，私网 IP 拒绝。
-  const dispatched = asset && (channel.id === 'mytv1' || channel.kind === 'aba')
-    && (/^[a-z0-9-]+\.100ycdn\.com$/.test(url.hostname) || (channel.id === 'mytv1' && publicIPv4(url.hostname)))
+  const dispatched = asset && (channel.id === 'mytv1' || channel.kind === 'aba' || channel.dispatch)
+    && (/^[a-z0-9-]+\.100ycdn\.com$/.test(url.hostname) || ((channel.id === 'mytv1' || channel.dispatch) && publicIPv4(url.hostname)))
     && url.pathname.startsWith(`/${expected.hostname}${dir}`)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.port || url.hash
       || (expected.protocol === 'https:' && url.protocol !== 'https:')
@@ -68,6 +68,25 @@ export function bazhongUrl(payload, channel) {
   const row = payload.data?.channel?.find(row => String(row.channelId) === channel.contentId)
   if (!row?.liveUrl) throw new Error('巴中官方目录没有本频道')
   return officialMedia(row.liveUrl, channel)
+}
+
+export function dfsxContent(payload, channel) {
+  if (String(payload?.id) !== channel.contentId || payload.type !== 'live'
+      || Number(payload.fields?.live_id) !== channel.liveId) throw new Error('客户端返回了其他频道')
+  return payload.fields
+}
+
+export function dfsxComponent(payload, channel) {
+  const live = payload?.lives?.find(row => Number(row.id) === channel.liveId && row.type === 1)
+  if (!live?.m3u8_url) throw new Error('官方客户端没有本频道直播')
+  return officialMedia(live.m3u8_url, channel)
+}
+
+export function ziyangUrl(payload, channel) {
+  const row = payload?.code === 200 && payload.data
+  if (String(row?.tv_id) !== channel.contentId || row.status !== 2) throw new Error('资阳客户端未提供公开电视直播')
+  // 和官网 tv_detail_dvw.html 一致：只使用匿名接口明确返回的 url，拒绝时不拼接备用流。
+  return officialMedia(row.url, channel)
 }
 
 export function abaUrl(payload, channel) {

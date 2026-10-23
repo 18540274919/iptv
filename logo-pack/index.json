@@ -879,6 +879,15 @@
    "updated": "2026-09-25",
    "width": 256
   },
+  "广元新闻综合": {
+   "file": "广元新闻综合.png",
+   "hash": "d26660a40b",
+   "height": 75,
+   "origin": "sichuan-cities",
+   "source": "https://file.dzsm.com/20200401/b96fe6add1e437fc74d208f88ef4f524/b96fe6add1e437fc74d208f88ef4f524.jpg",
+   "updated": "2026-10-23",
+   "width": 105
+  },
   "广州南国都市4K": {
    "file": "广州南国都市4K.png",
    "hash": "66cb499e49",
@@ -1937,6 +1946,15 @@
    "updated": "2026-09-25",
    "width": 256
   },
+  "乐山新闻综合": {
+   "file": "乐山新闻综合.png",
+   "hash": "1b2d4fbbf0",
+   "height": 129,
+   "origin": "sichuan-cities",
+   "source": "https://rmt.leshan.cn/file/a1100/2024/01/03/872b1304-72c2-40af-9f5f-e746ed55508a_one.jpg",
+   "updated": "2026-10-23",
+   "width": 193
+  },
   "梨园频道": {
    "file": "梨园频道.png",
    "hash": "9c1e7e6fed",
@@ -1945,6 +1963,30 @@
    "source": "https://cmsres.dianzhenkeji.com/anonymous/2020/9/18/1306760520484917248.png",
    "updated": "2026-09-25",
    "width": 256
+  },
+  "凉山新闻综合": {
+   "file": "凉山新闻综合.png",
+   "hash": "3dea5a3ef0",
+   "height": 256,
+   "origin": "sichuan-cities",
+   "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/db/ec/a5/dbeca571-2657-09db-9dc5-20b0f5a811d8/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+   "updated": "2026-10-23",
+   "width": 256,
+   "kind": "platform",
+   "page": "https://apps.apple.com/cn/app/id1546718587",
+   "note": "云上凉山官方 App 在 Apple 商店提供的广电标识；官网原 favicon 连接异常，目录缩略图为节目封面。"
+  },
+  "凉山彝语综合": {
+   "file": "凉山彝语综合.png",
+   "hash": "3dea5a3ef0",
+   "height": 256,
+   "origin": "sichuan-cities",
+   "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/db/ec/a5/dbeca571-2657-09db-9dc5-20b0f5a811d8/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+   "updated": "2026-10-23",
+   "width": 256,
+   "kind": "platform",
+   "page": "https://apps.apple.com/cn/app/id1546718587",
+   "note": "云上凉山官方 App 在 Apple 商店提供的广电标识；官网原 favicon 连接异常，目录缩略图为节目封面。"
   },
   "辽宁北方": {
    "file": "辽宁北方.png",
@@ -2064,6 +2106,15 @@
    "source": "https://imagehhsitehttps.sxrtv.com/images/2024/12/31/202412311735638703220_600.jpg",
    "updated": "2026-09-25",
    "width": 248
+  },
+  "眉山综合": {
+   "file": "眉山综合.png",
+   "hash": "dbd0b9c5cf",
+   "height": 59,
+   "origin": "sichuan-cities",
+   "source": "https://mszy.scmstv.cn/file/m1400/2024/12/12/1867078325618192386.png",
+   "updated": "2026-10-23",
+   "width": 89
   },
   "梅州客家生活": {
    "file": "梅州客家生活.png",
@@ -3599,6 +3650,15 @@
    "updated": "2026-09-25",
    "width": 256
   },
+  "雅安新闻综合": {
+   "file": "雅安新闻综合.png",
+   "hash": "c05424b4c6",
+   "height": 256,
+   "origin": "sichuan-cities",
+   "source": "https://file.yunxya.com/cms/2023-03-29/30344769/05971C9DCEF47BA190455462C6A0CA21.png",
+   "updated": "2026-10-23",
+   "width": 256
+  },
   "延边卫视": {
    "file": "延边卫视.png",
    "hash": "f3700e129b",
@@ -3666,6 +3726,24 @@
    "origin": "manual",
    "source": "https://www.youtube.com/@bsgroup1428",
    "updated": "2026-09-25",
+   "width": 256
+  },
+  "宜宾科教文旅": {
+   "file": "宜宾科教文旅.png",
+   "hash": "8e3a074728",
+   "height": 256,
+   "origin": "sichuan-cities",
+   "source": "https://alifile.yibinrm.cn/general/2026-06-22/A83BC3B3CC3B054DE7E81013D319633E.jpg",
+   "updated": "2026-10-23",
+   "width": 256
+  },
+  "宜宾新闻综合": {
+   "file": "宜宾新闻综合.png",
+   "hash": "8e3a074728",
+   "height": 256,
+   "origin": "sichuan-cities",
+   "source": "https://alifile.yibinrm.cn/general/2026-06-22/A83BC3B3CC3B054DE7E81013D319633E.jpg",
+   "updated": "2026-10-23",
    "width": 256
   },
   "优漫卡通": {
@@ -3855,6 +3933,15 @@
    "origin": "migu",
    "source": "http://wapx.cmvideo.cn:8080/publish/poms/image/5910/019/355/202405081702_1715158115119_H32_1080.webp",
    "updated": "2026-09-25",
+   "width": 256
+  },
+  "资阳新闻综合": {
+   "file": "资阳新闻综合.png",
+   "hash": "bdc9882e3f",
+   "height": 256,
+   "origin": "sichuan-cities",
+   "source": "https://zyobs.zyrb.com.cn/frame1/2025/03/20/7e418e7b-3c3c-a886-9982-d4c6aeb7ae92.png?x-image-process=image/watermark%2Cimage_eHdjbXJtdHB0LzIwMjQvNS8yMi9jNjFjZDZkYy02ZTkxLWViMzItOTEyMS1jOTc3ZjJjNjk4NjcucG5n%2Cmp_10%2Cg_br%2Ct_100%2Cx_10%2Cy_6",
+   "updated": "2026-10-23",
    "width": 256
   },
   "ACCDN": {
@@ -5346,13 +5433,22 @@
   "sichuan-cities/sichuan-cities-bztv2": "巴中文旅生活",
   "sichuan-cities/sichuan-cities-dztv1": "达州新闻综合",
   "sichuan-cities/sichuan-cities-dztv2": "达州文化生活",
+  "sichuan-cities/sichuan-cities-gytv1": "广元新闻综合",
   "sichuan-cities/sichuan-cities-gztv1": "甘孜综合",
+  "sichuan-cities/sichuan-cities-lshantv1": "乐山新闻综合",
+  "sichuan-cities/sichuan-cities-lstv1": "凉山新闻综合",
+  "sichuan-cities/sichuan-cities-lstv2": "凉山彝语综合",
   "sichuan-cities/sichuan-cities-lztv1": "泸州新闻综合",
   "sichuan-cities/sichuan-cities-lztv3": "泸州科教生活",
+  "sichuan-cities/sichuan-cities-mstv1": "眉山综合",
   "sichuan-cities/sichuan-cities-mytv1": "绵阳新闻综合",
   "sichuan-cities/sichuan-cities-njtv1": "内江综合",
   "sichuan-cities/sichuan-cities-sntv1": "遂宁综合",
   "sichuan-cities/sichuan-cities-tctv": "达州通川",
+  "sichuan-cities/sichuan-cities-yatv1": "雅安新闻综合",
+  "sichuan-cities/sichuan-cities-ybtv1": "宜宾新闻综合",
+  "sichuan-cities/sichuan-cities-ybtv2": "宜宾科教文旅",
+  "sichuan-cities/sichuan-cities-zytv1": "资阳新闻综合",
   "sichuan/sichuan-1016554": "四川经济频道",
   "sichuan/sichuan-1844567123037646849": "四川新闻频道",
   "sztv/sztv-24725": "深圳卫视4K",

@@ -49,7 +49,7 @@
 | `chongqing` | 重庆 | 无官方节目单 | — | — | — | 频道详情的 playbillid / billcontent 为空，其余路径 404 |
 | `sichuan` | 四川 | 无官方节目单 | — | — | — | 官网直播页与四川观察 App（9.11.2 拆包核对）都没有电视节目单；programs/{id}/dates 是栏目往期视频不是节目单；四川卫视由咪咕 / 央视频覆盖，康巴卫视央视网也没收 |
 | `chengdu` | 成都 | 已接入 | 2/27 | 2 | api.cntv.cn/epg/getEpgInfoByChannelNew?c=cdtv1 / cdtv5 | 新闻综合、公共取央视网今明两天节目单；其余主频道代号返回 params error；看度详情 billcontent 全空，官网 playbill 的 CDTV-1 今明两天 lists 均为空，区县暂无可用官方节目单 |
-| `sichuan-cities` | 四川市州 | 无官方节目单 | — | — | — | 13 路：绵阳正文仍为 2020 年旧表；内江为整点占位；达州、巴中、甘孜当天为空；阿坝公开目录与泸州、遂宁页面暂无可用编排，央视网候选代号未命中，详见模块 README |
+| `sichuan-cities` | 四川市州 | 已接入 | 2/22 | 2 | m.i0834.cn/v2/cms/public/lives/{id}/playlists | 凉山新闻综合、彝语综合取官方今明两天；其余 20 路表为空、占位或暂无公开编排，详见模块 README 与 APPS.md |
 | `dalian` | 大连 | 已接入 | 3/3 | 2 | wan-dlrm.dlrm.cn/app/tv/programs | 与取流共用匿名 SM2 令牌 |
 | `gansu` | 甘肃 | 已接入 | 1/6 | 2 | api.cntv.cn/epg/getEpgInfoByChannelNew?c=gansu | 甘肃台自己的 getTvProgramList 全空、也不是带时间的节目表；甘肃卫视取央视网（央视频也有），五个地面频道央视网、央视频都没收 |
 | `gdtv` | 广东 | 已接入 | 14/17 | 2 | gdtv-api.gdtv.cn/api/tv/v2/tvMenu | HMAC-SHA256 签名，key/secret 取自官网 WASM 签名模块（别直接跑官网签名脚本，里面有反 Node 陷阱）；经典剧、纪录片、健康官方为空 |

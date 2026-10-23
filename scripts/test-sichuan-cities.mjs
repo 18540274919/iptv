@@ -22,20 +22,20 @@ const master = (row, raw = row.media) => {
 }
 const media = '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:100\n#EXTINF:2,\nsegment.ts\n'
 
-test('四川市州独立注册、默认开启，8 个市州 13 路固定引用、无登录与回看', async () => {
+test('四川市州独立注册、默认开启，15 个市州 22 路固定引用、无登录与回看', async () => {
   assert.equal(getModule(module.id), module)
   assert.notEqual(module.defaultEnabled, false)
   assert.equal(module.channelHlsMode, undefined, '每台按是否要求来源头选择代理方式')
   assert.equal(module.relayProxyCompatible, true)
-  assert.equal(module.capabilities.epg, false)
-  assert.equal(module.catalogVersion, 1)
+  assert.equal(module.capabilities.epg, true)
+  assert.equal(module.catalogVersion, 2)
   assert.deepEqual(module.configSchema, [])
   const result = await module.fetch()
   assert.equal(result.groups[0].name, '四川')
-  assert.equal(result.groups[0].dataList.length, 13)
-  assert.equal(new Set(CHANNELS.map(row => row.city)).size, 8)
-  assert.equal(result.groups[0].dataList.filter(row => row.proxyHls).length, 4)
-  assert.equal(result.groups[0].dataList.filter(row => row.relayHls).length, 9)
+  assert.equal(result.groups[0].dataList.length, 22)
+  assert.equal(new Set(CHANNELS.map(row => row.city)).size, 15)
+  assert.equal(result.groups[0].dataList.filter(row => row.proxyHls).length, 7)
+  assert.equal(result.groups[0].dataList.filter(row => row.relayHls).length, 15)
   for (const row of result.groups[0].dataList) {
     assert.equal(row.catchup, 'none')
     assert.equal(row.url, undefined)
@@ -63,7 +63,7 @@ test('所有频道的官方标识都有内置备份，订阅不依赖外部台�
 })
 
 test('所有官方真实结构可解析；内江必须跟随网页的 live_id 和官方 AJAX', async () => {
-  for (const row of CHANNELS) {
+  for (const row of CHANNELS.filter(row => !row.appSource)) {
     const calls = []
     const resolver = createResolver({ now: () => 1792764000000, fetchImpl: async (url, options) => {
       calls.push({ url, options })

@@ -1,0 +1,547 @@
+{
+  "gytv1": {
+    "id": 1006352,
+    "type": "live",
+    "title": "广元新闻频道",
+    "fields": {
+      "live_id": 100999
+    }
+  },
+  "gytv1Live": {
+    "lives": [
+      {
+        "id": 100999,
+        "type": 1,
+        "m3u8_url": "https://m3u8.channel.dzsm.com/nmip-media/channellive/channel100999/playlist.m3u8"
+      }
+    ]
+  },
+  "ybtv1": {
+    "id": 43174882,
+    "type": "live",
+    "title": "新闻综合",
+    "fields": {
+      "link_url": "https://aliplay.yibinrm.cn/live/1.m3u8?auth_key=offline-fixture",
+      "live_id": 100134,
+      "show_program_list": "false"
+    }
+  },
+  "ybtv2": {
+    "id": 43174964,
+    "type": "live",
+    "title": "科教文旅",
+    "fields": {
+      "link_url": "https://aliplay.yibinrm.cn/live/2.m3u8?auth_key=offline-fixture",
+      "live_id": 100989,
+      "show_program_list": "false"
+    }
+  },
+  "lstv1": {
+    "id": 1052185,
+    "type": "live",
+    "title": "新闻综合频道",
+    "fields": {
+      "live_id": 114103,
+      "show_program_list": "true"
+    }
+  },
+  "lstv1Live": {
+    "lives": [
+      {
+        "id": 114103,
+        "type": 1,
+        "m3u8_url": "https://tvlive.i0834.cn/nmip-media/channellive/channel114103/playlist.m3u8"
+      }
+    ]
+  },
+  "lstv2": {
+    "id": 1056318,
+    "type": "live",
+    "title": "彝语综合频道",
+    "fields": {
+      "live_id": 115044,
+      "show_program_list": "true"
+    }
+  },
+  "lstv2Live": {
+    "lives": [
+      {
+        "id": 115044,
+        "type": 1,
+        "m3u8_url": "https://tvlive.i0834.cn/nmip-media/channellive/channel115044/playlist.m3u8"
+      }
+    ]
+  },
+  "yatv1": {
+    "id": 1030244,
+    "type": "live",
+    "title": "新闻综合",
+    "fields": {
+      "link_url": "http://m3u8channel.yunxya.com/nmip-media/channellive/channel100966/playlist.m3u8",
+      "live_id": 100028,
+      "show_program_list": "false"
+    }
+  },
+  "lshantv1": {
+    "code": 0,
+    "data": [
+      {
+        "componentCode": "component_tv_radio_live",
+        "propValue": {
+          "children": [
+            {
+              "componentType": 1,
+              "dataList": [
+                {
+                  "jumpId": "1742401486903521281",
+                  "jumpContentType": 36,
+                  "liveStream": "http://pwpull.leshan.cn/live/21609091019110008654ed1a00000000/playlist.m3u8"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "mstv1": {
+    "code": 0,
+    "data": [
+      {
+        "componentCode": "component_tv_radio_live",
+        "propValue": {
+          "children": [
+            {
+              "componentType": 1,
+              "dataList": [
+                {
+                  "jumpId": "1867078614933381121",
+                  "jumpContentType": 36,
+                  "liveStream": "http://mspull.scmstv.cn/live/4c0403ef019d1000d9803a5e00000000/playlist.m3u8"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "mstv1Config": {
+    "code": 0,
+    "data": {
+      "antiTheftChainAddress": "http://mspull.scmstv.cn",
+      "antiTheftChainKey": "b2ZmbGluZS1rZXk="
+    }
+  },
+  "zytv1": {
+    "code": 200,
+    "data": {
+      "tv_id": 1,
+      "status": 2,
+      "is_app_auth": 1,
+      "url": "https://zytvpull.zyrb.com.cn/live/sobeystream_1752554871.m3u8?sign=offline-fixture&t=offline"
+    }
+  },
+  "lstv1Epg": {
+    "2026-10-24": [
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792797060,
+        "stop_time": 1792798500
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792798500,
+        "stop_time": 1792800720
+      },
+      {
+        "name": "电视剧",
+        "start_time": 1792800720,
+        "stop_time": 1792805040
+      },
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792805040,
+        "stop_time": 1792807560
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792811160,
+        "stop_time": 1792813440
+      },
+      {
+        "name": "电视剧",
+        "start_time": 1792813440,
+        "stop_time": 1792814400
+      },
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792814400,
+        "stop_time": 1792815780
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792815780,
+        "stop_time": 1792819200
+      },
+      {
+        "name": "手语新闻",
+        "start_time": 1792819200,
+        "stop_time": 1792821000
+      },
+      {
+        "name": "电视剧",
+        "start_time": 1792821000,
+        "stop_time": 1792837800
+      },
+      {
+        "name": "四川新闻联播",
+        "start_time": 1792837800,
+        "stop_time": 1792839300
+      },
+      {
+        "name": "四川天气预报",
+        "start_time": 1792839300,
+        "stop_time": 1792839600
+      },
+      {
+        "name": "中央台新闻联播",
+        "start_time": 1792839600,
+        "stop_time": 1792841640
+      },
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792841640,
+        "stop_time": 1792842780
+      },
+      {
+        "name": "天气预报",
+        "start_time": 1792842780,
+        "stop_time": 1792843200
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792843200,
+        "stop_time": 1792844640
+      },
+      {
+        "name": "法治凉山",
+        "start_time": 1792844640,
+        "stop_time": 1792846680
+      },
+      {
+        "name": "晚间剧场",
+        "start_time": 1792846680,
+        "stop_time": 1792848600
+      },
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792852200,
+        "stop_time": 1792853580
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792853580,
+        "stop_time": 1792855140
+      },
+      {
+        "name": "晚间剧场",
+        "start_time": 1792855140,
+        "stop_time": 1792858560
+      }
+    ],
+    "2026-10-23": [
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792710660,
+        "stop_time": 1792712100
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792712100,
+        "stop_time": 1792714320
+      },
+      {
+        "name": "电视剧",
+        "start_time": 1792714320,
+        "stop_time": 1792718640
+      },
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792718640,
+        "stop_time": 1792721160
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792724760,
+        "stop_time": 1792727040
+      },
+      {
+        "name": "电视剧",
+        "start_time": 1792727040,
+        "stop_time": 1792728000
+      },
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792728000,
+        "stop_time": 1792729380
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792729380,
+        "stop_time": 1792732800
+      },
+      {
+        "name": "手语新闻",
+        "start_time": 1792732800,
+        "stop_time": 1792734600
+      },
+      {
+        "name": "电视剧",
+        "start_time": 1792734600,
+        "stop_time": 1792751400
+      },
+      {
+        "name": "四川新闻联播",
+        "start_time": 1792751400,
+        "stop_time": 1792752900
+      },
+      {
+        "name": "四川天气预报",
+        "start_time": 1792752900,
+        "stop_time": 1792753200
+      },
+      {
+        "name": "中央台新闻联播",
+        "start_time": 1792753200,
+        "stop_time": 1792755240
+      },
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792755240,
+        "stop_time": 1792756380
+      },
+      {
+        "name": "天气预报",
+        "start_time": 1792756380,
+        "stop_time": 1792756800
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792756800,
+        "stop_time": 1792758240
+      },
+      {
+        "name": "法治凉山",
+        "start_time": 1792758240,
+        "stop_time": 1792760280
+      },
+      {
+        "name": "晚间剧场",
+        "start_time": 1792760280,
+        "stop_time": 1792762200
+      },
+      {
+        "name": "凉山新闻联播",
+        "start_time": 1792765800,
+        "stop_time": 1792767180
+      },
+      {
+        "name": "今晚800",
+        "start_time": 1792767180,
+        "stop_time": 1792768740
+      },
+      {
+        "name": "晚间剧场",
+        "start_time": 1792768740,
+        "stop_time": 1792772160
+      }
+    ]
+  },
+  "lstv2Epg": {
+    "2026-10-24": [
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792797000,
+        "stop_time": 1792798200
+      },
+      {
+        "name": "手语新闻",
+        "start_time": 1792798200,
+        "stop_time": 1792799400
+      },
+      {
+        "name": "电视剧",
+        "start_time": 1792799400,
+        "stop_time": 1792805400
+      },
+      {
+        "name": "彝语栏目",
+        "start_time": 1792805400,
+        "stop_time": 1792806900
+      },
+      {
+        "name": "彝语电影",
+        "start_time": 1792806900,
+        "stop_time": 1792814400
+      },
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792814400,
+        "stop_time": 1792815600
+      },
+      {
+        "name": "访谈时空",
+        "start_time": 1792815600,
+        "stop_time": 1792817100
+      },
+      {
+        "name": "彝语电影",
+        "start_time": 1792817100,
+        "stop_time": 1792825200
+      },
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792825200,
+        "stop_time": 1792826400
+      },
+      {
+        "name": "彝文电视剧",
+        "start_time": 1792826400,
+        "stop_time": 1792836000
+      },
+      {
+        "name": "彝州艺苑",
+        "start_time": 1792836000,
+        "stop_time": 1792837800
+      },
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792837800,
+        "stop_time": 1792839600
+      },
+      {
+        "name": "中央电视台新闻联播",
+        "start_time": 1792839600,
+        "stop_time": 1792841400
+      },
+      {
+        "name": "彝语天气预报",
+        "start_time": 1792841400,
+        "stop_time": 1792842000
+      },
+      {
+        "name": "彝语栏目",
+        "start_time": 1792842000,
+        "stop_time": 1792843200
+      },
+      {
+        "name": "彝语电影",
+        "start_time": 1792843200,
+        "stop_time": 1792850700
+      },
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792850700,
+        "stop_time": 1792852200
+      },
+      {
+        "name": "彝文电视剧",
+        "start_time": 1792852200,
+        "stop_time": 1792861200
+      }
+    ],
+    "2026-10-23": [
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792710600,
+        "stop_time": 1792711800
+      },
+      {
+        "name": "手语新闻",
+        "start_time": 1792711800,
+        "stop_time": 1792713000
+      },
+      {
+        "name": "电视剧",
+        "start_time": 1792713000,
+        "stop_time": 1792719000
+      },
+      {
+        "name": "彝语栏目",
+        "start_time": 1792719000,
+        "stop_time": 1792720500
+      },
+      {
+        "name": "彝语电影",
+        "start_time": 1792720500,
+        "stop_time": 1792728000
+      },
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792728000,
+        "stop_time": 1792729200
+      },
+      {
+        "name": "访谈时空",
+        "start_time": 1792729200,
+        "stop_time": 1792730700
+      },
+      {
+        "name": "彝语电影",
+        "start_time": 1792730700,
+        "stop_time": 1792738800
+      },
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792738800,
+        "stop_time": 1792740000
+      },
+      {
+        "name": "彝文电视剧",
+        "start_time": 1792740000,
+        "stop_time": 1792749600
+      },
+      {
+        "name": "彝州艺苑",
+        "start_time": 1792749600,
+        "stop_time": 1792751400
+      },
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792751400,
+        "stop_time": 1792753200
+      },
+      {
+        "name": "中央电视台新闻联播",
+        "start_time": 1792753200,
+        "stop_time": 1792755000
+      },
+      {
+        "name": "彝语天气预报",
+        "start_time": 1792755000,
+        "stop_time": 1792755600
+      },
+      {
+        "name": "彝语栏目",
+        "start_time": 1792755600,
+        "stop_time": 1792756800
+      },
+      {
+        "name": "彝语电影",
+        "start_time": 1792756800,
+        "stop_time": 1792764300
+      },
+      {
+        "name": "彝语凉山新闻联播",
+        "start_time": 1792764300,
+        "stop_time": 1792765800
+      },
+      {
+        "name": "彝文电视剧",
+        "start_time": 1792765800,
+        "stop_time": 1792774800
+      }
+    ]
+  }
+}
