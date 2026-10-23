@@ -3491,6 +3491,24 @@
    "updated": "2026-09-25",
    "width": 256
   },
+  "盐城电视二套": {
+   "file": "盐城电视二套.png",
+   "hash": "99a94f026b",
+   "height": 132,
+   "origin": "yancheng",
+   "source": "https://filestorageyc.0515yc.cn/file/storage1-cloudlivemanage/cloudlivemanage/2023/1046/e053f971239b41c3.png",
+   "updated": "2026-10-23",
+   "width": 132
+  },
+  "盐城电视一套": {
+   "file": "盐城电视一套.png",
+   "hash": "99a94f026b",
+   "height": 132,
+   "origin": "yancheng",
+   "source": "https://filestorageyc.0515yc.cn/file/storage1-cloudlivemanage/cloudlivemanage/2023/1046/46d026cd9c9c62f3.png",
+   "updated": "2026-10-23",
+   "width": 132
+  },
   "扬州民生": {
    "file": "扬州民生.png",
    "hash": "2534703a50",
@@ -5243,6 +5261,8 @@
   "xizang/xizang-film-culture": "西藏影视文化",
   "xizang/xizang-satellite": "西藏卫视",
   "xizang/xizang-tibetan": "西藏藏语卫视",
+  "yancheng/yancheng-1": "盐城电视一套",
+  "yancheng/yancheng-2": "盐城电视二套",
   "yangshipin/ysp-ahws": "安徽卫视",
   "yangshipin/ysp-bjws": "北京卫视",
   "yangshipin/ysp-cctv1": "CCTV1综合",
