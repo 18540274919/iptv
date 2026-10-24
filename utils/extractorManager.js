@@ -1186,6 +1186,16 @@ class ExtractorManager {
       if (!groupMap.has(name)) groupMap.set(name, { name, dataList: [] })
       groupMap.get(name).dataList.push(entry)
     }
+    // 打头频道（channel.leading，如市县台并进「山东-淄博」的淄博新闻综合）排到组内最前：
+    // 地市分组由区县台模块先建好（定地市顺序），市台却来自后面的模块，照常追加会落到组尾
+    for (const group of groupMap.values()) {
+      if (group.dataList.some(channel => channel.leading === true)) {
+        group.dataList = [
+          ...group.dataList.filter(channel => channel.leading === true),
+          ...group.dataList.filter(channel => channel.leading !== true),
+        ]
+      }
+    }
     return [...groupMap.values()]
   }
 

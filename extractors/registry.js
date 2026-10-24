@@ -143,6 +143,8 @@
  *   catchup    可选 'none'，显式关闭该台继承订阅头的全局回看能力
  *   trailing   可选 true，海外台：排到所在分组最后，跟在各台官方频道与精选列表等外部订阅
  *              之后（extractors/overseas）
+ *   leading    可选 true，打头频道：排到所在分组的模块频道最前（多个时保持原顺序）。给并进
+ *              别的模块先建好的分组、又该排第一的台用（市县台并进「山东-淄博」的淄博新闻综合）
  *   supplement 可选 true，补充频道：追加在同组所有模块频道之后，不决定分组位置
  *              （咪咕并进地区分组的频道，见 extractors/migu 的 MIGU_LOCAL_SUPPLEMENTS）
  *   supersedesFeatured 可选 true，模块接手了精选频道（IPTV.m3u）里的这台：同组同名的精选频道条目

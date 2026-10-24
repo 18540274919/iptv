@@ -1376,6 +1376,31 @@ try {
     assert.deepEqual(fallback[2].dataList.map(channel => channel.deferredRef), ['651632657', '617290047'])
   })
 
+  check('输出：打头频道排到同组模块频道最前，多个时保持原顺序，不改变分组位置', () => {
+    const manager = newManager()
+    manager.setModuleEnabled('shandong-counties', true)
+    manager.cache.modules['shandong-counties'] = {
+      groups: [
+        { name: '山东-济南', dataList: [{ name: '长清综合', deferredRef: 'sdcounty-171-2' }] },
+        { name: '山东-菏泽', dataList: [
+          { name: '牡丹区新闻综合', deferredRef: 'sdcounty-219-6' },
+          { name: '定陶综合', deferredRef: 'sdcounty-27-7' },
+        ] },
+      ],
+      health: { status: 'ok' },
+    }
+    manager.cache.modules.guangdianyun = {
+      groups: [{ name: '山东-菏泽', dataList: [
+        { name: '菏泽一套', deferredRef: 'gdy-3492-4042', leading: true },
+        { name: '菏泽二套', deferredRef: 'gdy-3493-4042', leading: true },
+      ] }],
+      health: { status: 'ok' },
+    }
+    const groups = manager.getValidChannels()
+    assert.deepEqual(groups.map(group => group.name), ['山东-济南', '山东-菏泽'])
+    assert.deepEqual(groups[1].dataList.map(channel => channel.name), ['菏泽一套', '菏泽二套', '牡丹区新闻综合', '定陶综合'])
+  })
+
   check('抓取失败时沿用上一轮频道——频道不能静默从播放列表消失', () => {
     const manager = newManager()
     manager.setModuleEnabled('bilibili-live', true)
