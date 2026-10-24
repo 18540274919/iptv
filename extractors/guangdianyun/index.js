@@ -43,8 +43,10 @@ export function createProvinceModule(province) {
     id: `guangdianyun-${PROVINCE_IDS[province]}`,
     name: `市县台·${province}`,
     description: `广电云平台托管的${province}市县级电视台官方直播（目录 ${scope}）`
-      + `${slow ? '，慢直播放在「慢直播」分组' : ''}；每轮只收正在推流的，停推的恢复后自动出现。`,
+      + `${slow ? '，慢直播放在「慢直播」分组' : ''}；每轮只收正在推流的，停推的恢复后自动出现。默认关闭，需要时在本省面板里打开。`,
     region: province,
+    // 频道量大、只有本地少数人看的市县台：默认关闭，由用户按省自己打开（作者拍板，同山东市县）
+    defaultEnabled: false,
     capabilities: { cache: 'disk', resolve: true, epg: true, catchup: false },
     catalogVersion: 1,
     relayProxyCompatible: true,

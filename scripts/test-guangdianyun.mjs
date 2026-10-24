@@ -317,6 +317,7 @@ check('按省拆成 20 个模块：各进对应省面板、按引用各认各的
     assert.equal(moduleRegion(module), province)
     assert.equal(module.category, undefined)
     assert.equal(module.catalogVersion, 1)
+    assert.equal(module.defaultEnabled, false, `${module.id} 默认关闭`)
     assert.equal(module.capabilities.resolve, true)
     assert.equal(module.capabilities.epg, true)
     assert.equal(module.capabilities.catchup, false)
