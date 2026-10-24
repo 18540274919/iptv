@@ -3045,11 +3045,12 @@
         .extractor-category-btn .attention-dot { margin-left: 0; }
         .category-note { padding: 1px 4px; border-radius: 4px; background: var(--ui-warning-soft); color: var(--ui-warning); font-weight: 500; }
         .extractor-filter-empty { padding: 22px; border: 1px dashed var(--ui-line-strong); border-radius: 12px; background: var(--ui-surface-soft); color: var(--ui-muted); font-size: 13px; }
-        /* 免账号小节的地区面板：一行一个，点标题展开出同一套卡片网格 */
-        .region-panel-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+        /* 免账号小节的地区面板：收起时横排成小块，展开的那个占满整行、下面铺开同一套卡片网格 */
+        .region-panel-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+        .region-panel.open { grid-column: 1 / -1; }
         .source-grid + .region-panel-list { margin-top: 18px; }
         .region-panel { border: 1px solid var(--ui-line); border-radius: 12px; background: var(--ui-surface); }
-        .region-panel-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 16px; border: 0; border-radius: 12px; background: none; color: var(--ui-text); font: inherit; text-align: left; cursor: pointer; }
+        .region-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; width: 100%; padding: 13px 16px; border: 0; border-radius: 12px; background: none; color: var(--ui-text); font: inherit; text-align: left; cursor: pointer; }
         .region-panel-head:hover { background: var(--ui-surface-soft); }
         .region-panel-caret { display: inline-block; width: 12px; color: var(--ui-muted); transition: transform .16s ease; }
         .region-panel.open .region-panel-caret { transform: rotate(90deg); }
