@@ -222,7 +222,7 @@ import nantong from './nantong/index.js'
 import yancheng from './yancheng/index.js'
 import yunnan from './yunnan/index.js'
 import tdm from './tdm/index.js'
-import guangdianyun from './guangdianyun/index.js'
+import guangdianyunModules from './guangdianyun/index.js'
 import shandongCounties from './shandong-counties/index.js'
 import overseas from './overseas/index.js'
 
@@ -303,8 +303,8 @@ const MODULES = [
   mgtv,
   // 山东市县在市县台之前：「山东-济南」…「山东-菏泽」按它的地市顺序先建好，市县台的淄博、菏泽两台再并进去
   shandongCounties,
-  // 市县台跟在各省级、地市模块之后：并进同省分组时排在省台、市台后面
-  guangdianyun,
+  // 市县台（广电云，按省拆成 20 个模块）跟在各省级、地市模块之后：并进同省分组时排在省台、市台后面
+  ...guangdianyunModules,
   // 海外频道排最后：并进体育、文旅等现有分组时，跟在各台官方频道后面
   overseas,
 ]

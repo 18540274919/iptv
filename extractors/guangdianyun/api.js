@@ -360,11 +360,12 @@ export function createResolver({
     }
   }
 
-  function clear() {
-    for (const ref of [...sessions.keys()]) close(ref)
-    pending.clear()
-    infos.clear()
-    failures.clear()
+  /** 断开在线会话并清缓存；给了 match(ref) 就只清匹配的（按省拆的模块只清自己那省） */
+  function clear(match = () => true) {
+    for (const ref of [...sessions.keys()]) if (match(ref)) close(ref)
+    for (const map of [pending, infos, failures]) {
+      for (const ref of [...map.keys()]) if (match(ref)) map.delete(ref)
+    }
   }
 
   return { resolve, clear, sessionCount: () => sessions.size, tick }

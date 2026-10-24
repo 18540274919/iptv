@@ -10,7 +10,7 @@
  */
 import assert from 'node:assert/strict'
 
-import gdyEpg, { PROGRAMME_API, parseProgrammes, shanghaiDay } from '../extractors/guangdianyun/epg.js'
+import { PROGRAMME_API, epgFor, parseProgrammes, programmes, shanghaiDay } from '../extractors/guangdianyun/epg.js'
 import { getModule } from '../extractors/registry.js'
 
 let passed = 0
@@ -84,18 +84,21 @@ check('空表是官方没发：返回空数组；平台拒绝和结构变化报�
 await checkAsync('请求地址与官网一致：channelId + uin + date', async () => {
   let requested = ''
   const fetchImpl = async url => { requested = url; return { ok: true, status: 200, text: async () => JSON.stringify(HUANGSHI) } }
-  const list = await gdyEpg.programmes('3031-3065', '20261025', { fetchImpl })
+  const list = await programmes('3031-3065', '20261025', { fetchImpl })
   assert.equal(requested, `${PROGRAMME_API}?channelId=3031&uin=3065&date=2026-10-25`)
   assert.equal(list[1].start, sh('2026-10-25 06:30'))
-  await assert.rejects(gdyEpg.programmes('1-1', '20261025', { fetchImpl }), /频道无效/)
+  await assert.rejects(programmes('1-1', '20261025', { fetchImpl }), /频道无效/)
 })
 
 check('模块挂了节目单：频道按引用对上，取今明两天', () => {
-  const module = getModule('guangdianyun')
-  assert.equal(module.epg, gdyEpg)
-  assert.equal(gdyEpg.days, 2)
-  const huangshi = gdyEpg.channels().find(item => item.key === '3031-3065')
+  const module = getModule('guangdianyun-hubei')
+  assert.equal(module.epg.days, 2)
+  assert.equal(module.epg.programmes, programmes)
+  const huangshi = module.epg.channels().find(item => item.key === '3031-3065')
   assert.deepEqual(huangshi, { ref: 'gdy-3031-3065', name: '黄石新闻综合', key: '3031-3065' })
+  // 别省的台不在湖北模块的节目单里；慢直播不去问
+  assert.equal(module.epg.channels().some(item => item.key === '1902-3370'), false)
+  assert.equal(epgFor('河南').channels().some(item => item.key === '3900-3744'), false)
 })
 
 console.log(`\n${passed} 项通过`)

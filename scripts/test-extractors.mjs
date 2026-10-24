@@ -1396,7 +1396,8 @@ try {
       ],
       health: { status: 'ok' },
     }
-    manager.cache.modules.guangdianyun = {
+    manager.setModuleEnabled('guangdianyun-shandong', true)
+    manager.cache.modules['guangdianyun-shandong'] = {
       groups: [{ name: '山东-菏泽', dataList: [
         { name: '菏泽一套', deferredRef: 'gdy-3492-4042', leading: true },
         { name: '菏泽二套', deferredRef: 'gdy-3493-4042', leading: true },

@@ -8,12 +8,14 @@
  */
 import assert from 'node:assert/strict'
 
-import gdy, { buildGroups } from '../extractors/guangdianyun/index.js'
-import { CHANNELS, CHANNEL_BY_REF, GROUPS, SLOW_GROUP } from '../extractors/guangdianyun/channels.js'
+import gdyModules, { buildGroups } from '../extractors/guangdianyun/index.js'
+import { CHANNELS, CHANNEL_BY_REF, GROUPS, PROVINCE_IDS, SLOW_GROUP } from '../extractors/guangdianyun/channels.js'
 import {
   API_BASE, MQTT_PINGREQ, MQTT_WS, STATS_WS, checkLive, connackVerdict, createResolver, mqttConnectPacket,
 } from '../extractors/guangdianyun/api.js'
-import { getModule, resolverFor } from '../extractors/registry.js'
+import { getModule, listModules, moduleRegion, resolverFor } from '../extractors/registry.js'
+
+const henan = getModule('guangdianyun-henan')
 
 let passed = 0
 const check = (name, fn) => { fn(); passed++; console.log(`  ✅ ${name}`) }
@@ -165,18 +167,18 @@ await checkAsync('刷新：只收 liveStatus=1；被删的和停推的跳过；�
 })
 
 await checkAsync('刷新：全部查不到时报错，让上一轮的频道表留着', async () => {
-  await assert.rejects(gdy.fetch({}, { fetchImpl: async () => { throw new Error('offline') } }), /请求失败/)
+  await assert.rejects(henan.fetch({}, { fetchImpl: async () => { throw new Error('offline') } }), /请求失败/)
 })
 
 await checkAsync('刷新：停推的台进 skipped，恢复推流后下一轮回到播放列表', async () => {
   let live = 0
   const fetchImpl = async url => json(info(new URL(url).searchParams.get('id') === '142' ? live : 1))
-  const first = await gdy.fetch({}, { fetchImpl })
+  const first = await henan.fetch({}, { fetchImpl })
   const names = result => result.groups.flatMap(group => group.dataList.map(channel => channel.name))
   assert.equal(names(first).includes('南阳新闻综合'), false)
   assert.ok(first.meta.skipped.includes('南阳新闻综合：台方当前没有推流'))
   live = 1
-  const second = await gdy.fetch({}, { fetchImpl })
+  const second = await henan.fetch({}, { fetchImpl })
   assert.ok(names(second).includes('南阳新闻综合'))
   assert.equal(second.meta.skipped.length, 0)
 })
@@ -301,20 +303,63 @@ await checkAsync('resolve 不抛异常：引用无效、接口异常都回中文
   assert.match(result.desc, /广电云/)
 })
 
-check('模块已注册：按引用路由、带节目单、不暴露配置项', () => {
-  const module = getModule('guangdianyun')
-  assert.ok(module)
-  assert.equal(module.capabilities.resolve, true)
-  assert.equal(module.capabilities.epg, true)
-  assert.equal(module.capabilities.catchup, false)
-  assert.deepEqual(module.configSchema, [])
-  assert.equal(module.refreshConfigurable, false)
-  assert.equal(resolverFor('gdy-1902-3370')?.id, 'guangdianyun')
+check('按省拆成 20 个模块：各进对应省面板、按引用各认各的、不暴露配置项', () => {
+  assert.equal(getModule('guangdianyun'), undefined)
+  const provinces = [...new Set(CHANNELS.map(row => row.province))]
+  assert.deepEqual(Object.keys(PROVINCE_IDS), provinces, '每个省都要有模块 id，顺序同频道表')
+  const modules = listModules().filter(module => module.id.startsWith('guangdianyun-'))
+  assert.deepEqual(modules.map(module => module.id), gdyModules.map(module => module.id))
+  assert.equal(modules.length, 20)
+  for (const module of modules) {
+    const province = module.region
+    assert.equal(module.id, `guangdianyun-${PROVINCE_IDS[province]}`)
+    assert.equal(module.name, `市县台·${province}`)
+    assert.equal(moduleRegion(module), province)
+    assert.equal(module.category, undefined)
+    assert.equal(module.catalogVersion, 1)
+    assert.equal(module.capabilities.resolve, true)
+    assert.equal(module.capabilities.epg, true)
+    assert.equal(module.capabilities.catchup, false)
+    assert.deepEqual(module.configSchema, [])
+    assert.equal(module.refreshConfigurable, false)
+    // 节目单只列本省电视台，慢直播没有节目单，不去问
+    const epg = module.epg.channels()
+    assert.ok(epg.length > 0, module.id)
+    assert.ok(epg.every(item => CHANNEL_BY_REF.get(item.ref).province === province && CHANNEL_BY_REF.get(item.ref).group !== SLOW_GROUP))
+  }
+  // 每个频道恰好归一个模块
+  for (const row of CHANNELS) {
+    const owners = modules.filter(module => module.claimsRef(row.ref))
+    assert.deepEqual(owners.map(module => module.id), [`guangdianyun-${PROVINCE_IDS[row.province]}`], row.ref)
+  }
+  assert.equal(resolverFor('gdy-1902-3370')?.id, 'guangdianyun-guangxi')
+  assert.equal(resolverFor('gdy-2308-3185')?.id, 'guangdianyun-shandong')
+  assert.equal(resolverFor('gdy-3900-3744')?.id, 'guangdianyun-henan', '慢直播跟着所属台的省份模块走')
   assert.equal(resolverFor('gdy-1-1'), null)
-  // 慢直播没有节目单，不去问
-  assert.equal(module.epg.channels().length, CHANNELS.filter(row => row.group !== SLOW_GROUP).length)
-  assert.ok(module.epg.channels().every(item => CHANNEL_BY_REF.get(item.ref).group !== SLOW_GROUP))
 })
 
-gdy.clearResolveCache()
+await checkAsync('省份模块的输出只含本省：电视台进省（或省-市）分组，慢直播进「慢直播」', async () => {
+  const live = async () => json(info(1))
+  const result = await henan.fetch({}, { fetchImpl: live })
+  assert.deepEqual(result.groups.map(group => group.name), ['河南', SLOW_GROUP])
+  assert.ok(result.groups[1].dataList.every(channel => CHANNEL_BY_REF.get(channel.deferredRef).province === '河南'))
+  const shandong = await getModule('guangdianyun-shandong').fetch({}, { fetchImpl: live })
+  assert.deepEqual(shandong.groups.map(group => group.name), ['山东-淄博', '山东-菏泽'])
+})
+
+await checkAsync('只清一个省的缓存时，别的省正在播的会话不断', async () => {
+  const h = harness()
+  const liuzhou = CHANNEL_BY_REF.get('gdy-1902-3370')
+  const huangshi = CHANNEL_BY_REF.get('gdy-3031-3065')
+  await h.resolver.resolve(liuzhou.ref)
+  await h.resolver.resolve(huangshi.ref)
+  assert.equal(h.resolver.sessionCount(), 2)
+  h.resolver.clear(ref => CHANNEL_BY_REF.get(ref)?.province === '湖北')
+  assert.equal(h.resolver.sessionCount(), 1)
+  assert.ok(h.sockets.slice(0, 2).every(socket => !socket.closed), '广西的两条连接还开着')
+  h.resolver.clear()
+  assert.equal(h.resolver.sessionCount(), 0)
+})
+
+for (const module of gdyModules) module.clearResolveCache()
 console.log(`\n${passed} 项通过`)

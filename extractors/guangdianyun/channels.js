@@ -297,6 +297,14 @@ export const CHANNELS = Object.freeze(rows.map(row => Object.freeze({
 export const CHANNEL_BY_REF = new Map(CHANNELS.map(row => [row.ref, row]))
 export const CHANNEL_BY_KEY = new Map(CHANNELS.map(row => [row.key, row]))
 
+/** 按省拆模块用的 id 后缀（guangdianyun-<拼音>）；顺序即频道表里省份第一次出现的顺序，也是后台模块顺序 */
+export const PROVINCE_IDS = Object.freeze({
+  北京: 'beijing', 黑龙江: 'heilongjiang', 辽宁: 'liaoning', 河北: 'hebei', 山西: 'shanxi',
+  山东: 'shandong', 安徽: 'anhui', 河南: 'henan', 湖北: 'hubei', 湖南: 'hunan',
+  江西: 'jiangxi', 江苏: 'jiangsu', 浙江: 'zhejiang', 福建: 'fujian', 广东: 'guangdong',
+  广西: 'guangxi', 贵州: 'guizhou', 四川: 'sichuan', 新疆: 'xinjiang', 海南: 'hainan',
+})
+
 /** 输出时分组的先后：电视台的省份按频道表里第一次出现的顺序，「慢直播」放最后 */
 export const SLOW_GROUP = '慢直播'
 export const GROUPS = [...new Set(CHANNELS.filter(row => row.group !== SLOW_GROUP).map(row => row.group)), SLOW_GROUP]

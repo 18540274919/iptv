@@ -101,9 +101,13 @@ export async function programmes(key, day, { fetchImpl = globalThis.fetch, timeo
   return parseProgrammes(payload, day)
 }
 
-export default {
-  days: 2,
-  // 慢直播是固定机位，没有节目单，不去问
-  channels: () => CHANNELS.filter(row => row.group !== SLOW_GROUP).map(row => ({ ref: row.ref, name: row.name, key: row.key })),
-  programmes,
+/** 按省拆模块后每个模块一份：只列本省电视台；慢直播是固定机位，没有节目单，不去问 */
+export function epgFor(province) {
+  return {
+    days: 2,
+    channels: () => CHANNELS
+      .filter(row => row.province === province && row.group !== SLOW_GROUP)
+      .map(row => ({ ref: row.ref, name: row.name, key: row.key })),
+    programmes,
+  }
 }
