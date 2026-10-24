@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict'
 
 import gdy, { buildGroups } from '../extractors/guangdianyun/index.js'
-import { CHANNELS, CHANNEL_BY_REF } from '../extractors/guangdianyun/channels.js'
+import { CHANNELS, CHANNEL_BY_REF, GROUPS, SLOW_GROUP } from '../extractors/guangdianyun/channels.js'
 import {
   API_BASE, MQTT_PINGREQ, MQTT_WS, STATS_WS, checkLive, connackVerdict, createResolver, mqttConnectPacket,
 } from '../extractors/guangdianyun/api.js'
@@ -109,19 +109,27 @@ check('CONNACK：返回码 0 才算上线，别的码报拒绝，不是 CONNACK 
   assert.equal(connackVerdict(new Uint8Array([0x90, 3, 0, 1, 0]).buffer), undefined)
 })
 
-check('频道表：引用唯一、都按省归组，排除的活动间与慢直播不在表里', () => {
+check('频道表：引用唯一；电视台按省归组，慢直播统一一组排最后；排除的活动间、备线不在表里', () => {
   assert.equal(new Set(CHANNELS.map(row => row.ref)).size, CHANNELS.length)
   assert.equal(new Set(CHANNELS.map(row => row.name)).size, CHANNELS.length)
   for (const row of CHANNELS) {
     assert.match(row.ref, /^gdy-\d+-\d+$/)
     assert.ok(row.province && row.name && row.rawName, row.ref)
+    assert.equal(row.group, row.group === SLOW_GROUP ? SLOW_GROUP : row.province, row.ref)
+    if (row.group === SLOW_GROUP) assert.equal(row.logo, undefined, `${row.ref} 慢直播不配台标`)
     if (row.logo) assert.match(row.logo, /^https:\/\/static-pro\.guangdianyun\.tv\/\d+\/program\//)
   }
-  for (const excluded of ['gdy-1725-1632', 'gdy-1726-1632', 'gdy-3071-3065', 'gdy-803-1610', 'gdy-1933-3277', 'gdy-3780-1167']) {
+  assert.equal(GROUPS.at(-1), SLOW_GROUP)
+  assert.equal(GROUPS.filter(group => group === SLOW_GROUP).length, 1)
+  // 直播黄石（3071）这类以后可以挪进慢直播，目前不收；各台备线、转播央视、测试间不收
+  for (const excluded of ['gdy-1725-1632', 'gdy-1726-1632', 'gdy-3071-3065', 'gdy-803-1610', 'gdy-1933-3277', 'gdy-3780-1167',
+    'gdy-808-1610', 'gdy-902-1610', 'gdy-2179-2656', 'gdy-3953-4736', 'gdy-3408-1723', 'gdy-3863-4206']) {
     assert.equal(CHANNEL_BY_REF.has(excluded), false, excluded)
   }
   assert.equal(CHANNEL_BY_REF.get('gdy-170-1356').name, '乐清综合')
   assert.equal(CHANNEL_BY_REF.get('gdy-171-1356').name, '乐清新闻')
+  assert.equal(CHANNEL_BY_REF.get('gdy-3706-4436').group, '河南')
+  assert.equal(CHANNEL_BY_REF.get('gdy-3900-3744').group, SLOW_GROUP)
 })
 
 await checkAsync('刷新：只收 liveStatus=1；被删的和停推的跳过；没查到的照留', async () => {
@@ -137,6 +145,9 @@ await checkAsync('刷新：只收 liveStatus=1；被删的和停推的跳过；�
   assert.deepEqual(results.map(item => item.state), ['live', 'offline', 'gone', 'unknown'])
   const groups = buildGroups(results)
   assert.deepEqual(groups.map(group => group.name), ['江苏', '广西'])
+  const withSlow = buildGroups([...results, { channel: CHANNEL_BY_REF.get('gdy-3900-3744'), state: 'live' }])
+  assert.deepEqual(withSlow.map(group => group.name), ['江苏', '广西', SLOW_GROUP])
+  assert.equal(withSlow.at(-1).dataList[0].name, '许昌春水桥')
   const liuzhou = groups[1].dataList[0]
   assert.equal(liuzhou.deferredRef, 'gdy-1902-3370')
   assert.equal(liuzhou.relayHls, true)
@@ -290,7 +301,9 @@ check('模块已注册：按引用路由、带节目单、不暴露配置项', (
   assert.equal(module.refreshConfigurable, false)
   assert.equal(resolverFor('gdy-1902-3370')?.id, 'guangdianyun')
   assert.equal(resolverFor('gdy-1-1'), null)
-  assert.equal(module.epg.channels().length, CHANNELS.length)
+  // 慢直播没有节目单，不去问
+  assert.equal(module.epg.channels().length, CHANNELS.filter(row => row.group !== SLOW_GROUP).length)
+  assert.ok(module.epg.channels().every(item => CHANNEL_BY_REF.get(item.ref).group !== SLOW_GROUP))
 })
 
 gdy.clearResolveCache()

@@ -1,5 +1,5 @@
-/** 广电云市县台：全国 20 个省区市的市县级融媒体中心 / 电视台官方直播，按省归组。 */
-import { CHANNELS, CHANNEL_BY_REF, PROVINCES } from './channels.js'
+/** 广电云市县台：全国 20 个省区市的市县级融媒体中心 / 电视台官方直播按省归组，各地慢直播放「慢直播」分组。 */
+import { CHANNELS, CHANNEL_BY_REF, GROUPS } from './channels.js'
 import { checkLive, createResolver } from './api.js'
 import epg from './epg.js'
 import { printGrey } from '../../utils/colorOut.js'
@@ -8,10 +8,10 @@ const resolver = createResolver({ log: printGrey })
 
 export function buildGroups(results) {
   const live = results.filter(item => item.state === 'live' || item.state === 'unknown').map(item => item.channel)
-  return PROVINCES
-    .map(province => ({
-      name: province,
-      dataList: live.filter(channel => channel.province === province).map(channel => ({
+  return GROUPS
+    .map(group => ({
+      name: group,
+      dataList: live.filter(channel => channel.group === group).map(channel => ({
         name: channel.name,
         deferredRef: channel.ref,
         // 清单由模块每次播放请求取回（顺带给在线会话续期）并交给本机中继；分片带自己的签名，播放器直连
@@ -27,9 +27,9 @@ export function buildGroups(results) {
 export default {
   id: 'guangdianyun',
   name: '市县台',
-  description: '广电云平台托管的市县级电视台官方直播，覆盖 20 个省区市，按省归组；每轮只收正在推流的台，停推的台恢复后自动出现。',
+  description: '广电云平台托管的市县级电视台官方直播，覆盖 20 个省区市、按省归组，另有各地融媒体中心的慢直播放在「慢直播」分组；每轮只收正在推流的，停推的恢复后自动出现。',
   capabilities: { cache: 'disk', resolve: true, epg: true, catchup: false },
-  catalogVersion: 1,
+  catalogVersion: 2,
   relayProxyCompatible: true,
   defaultRefreshMinutes: 60,
   refreshConfigurable: false,

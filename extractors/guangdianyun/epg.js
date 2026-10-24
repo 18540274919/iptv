@@ -6,13 +6,13 @@
  * 不看 Referer。实测（2026-10-24）：
  * - 成功时 code 200、errorCode 0；data.list 每条只有 name、startTime / endTime（当天的
  *   HH:MM:SS），没有日期，按请求的上海日期拼。结束时间不大于开始时间的，按跨过午夜处理。
- * - 95 台里约 22 台有编排，其余 list 为空，按官方没发处理；照样每轮去取，哪天排了就自动有。
+ * - 首批 95 台里约 22 台有编排，其余 list 为空，按官方没发处理；照样每轮去取，哪天排了就自动有。
  * - 濮阳新闻综合整天是整点「节目回放」，是回看切片的占位，不当节目。
  * - 有的台编排不连续（临平只有 18:30 一档新闻），缺的时段就空着，不补。
  *
  * 和取流链路没有共享状态：只用 channels.js 的频道表和调用方注入的 fetch。
  */
-import { CHANNEL_BY_KEY, CHANNELS } from './channels.js'
+import { CHANNEL_BY_KEY, CHANNELS, SLOW_GROUP } from './channels.js'
 
 export const PROGRAMME_API = 'https://programme.guangdianyun.tv/v1/programme/Index/getListByChannel'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -103,6 +103,7 @@ export async function programmes(key, day, { fetchImpl = globalThis.fetch, timeo
 
 export default {
   days: 2,
-  channels: () => CHANNELS.map(row => ({ ref: row.ref, name: row.name, key: row.key })),
+  // 慢直播是固定机位，没有节目单，不去问
+  channels: () => CHANNELS.filter(row => row.group !== SLOW_GROUP).map(row => ({ ref: row.ref, name: row.name, key: row.key })),
   programmes,
 }
