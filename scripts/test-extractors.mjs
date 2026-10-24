@@ -2028,23 +2028,27 @@ const huyaTwoLineHtml = `
 
 const huyaManifest = '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-MEDIA-SEQUENCE:10\n#EXT-X-TARGETDURATION:4\n#EXTINF:3.0,\nabc_2000-1.ts?x=1\n#EXTINF:3.0,\nabc_2000-2.ts?x=1\n'
 
-// 按主机路由的假上游：房间页回 html；各线路清单/分片按 rules 回状态码，并记录请求次数
+// 按主机路由的假上游：房间页回 upstream.html（可中途换）；各线路清单/分片按 rules 回状态码
+// （数组=按次序逐个回、最后一个一直回），并记录请求次数与每次清单请求的地址
 function huyaUpstream(html, rules = {}) {
-  const hits = { page: 0, manifest: {}, segment: {} }
-  const fetchImpl = async raw => {
+  const hits = { page: 0, manifest: {}, segment: {}, manifestUrls: [] }
+  const statusOf = rule => (Array.isArray(rule) ? (rule.length > 1 ? rule.shift() : rule[0]) : rule) ?? 200
+  const upstream = { html, rules, hits }
+  upstream.fetchImpl = async raw => {
     const url = new URL(String(raw))
     const respond = (status, text) => ({ ok: status === 200, status, url: url.href, text: async () => text, body: null })
-    if (url.hostname === 'www.huya.com') { hits.page++; return respond(200, html) }
+    if (url.hostname === 'www.huya.com') { hits.page++; return respond(200, upstream.html) }
     const line = url.hostname.split('.')[0].toUpperCase()
     if (url.pathname.endsWith('.m3u8')) {
       hits.manifest[line] = (hits.manifest[line] || 0) + 1
-      const status = rules[line]?.manifest ?? 200
+      hits.manifestUrls.push(url.href)
+      const status = statusOf(upstream.rules[line]?.manifest)
       return respond(status, status === 200 ? huyaManifest : '<html>403 Forbidden</html>')
     }
     hits.segment[line] = (hits.segment[line] || 0) + 1
-    return respond(rules[line]?.segment ?? 200, '')
+    return respond(statusOf(upstream.rules[line]?.segment), '')
   }
-  return { fetchImpl, hits }
+  return upstream
 }
 
 await checkAsync('虎牙：模块抓取赛事卡片，播放时才刷新签名、取回清单并要求清单中继', async () => {
@@ -2112,6 +2116,48 @@ await checkAsync('虎牙：全部线路被拒时回失败，10 秒内不再替�
   assert.deepEqual(upstream.hits.manifest, { AL: 2, TX: 2, HS: 2 }, '连续第二次全线失败后间隔翻倍到 20 秒')
   await resolveHuyaRoom('huya-660101', { now: 1700000012000 + 21 * 1000, config, fetchImpl: upstream.fetchImpl })
   assert.deepEqual(upstream.hits.manifest, { AL: 3, TX: 3, HS: 3 })
+})
+
+await checkAsync('虎牙：签名地址跨房间页刷新一直复用，到期的签名被拒先重签一次，没到期的签名被拒直接换线，主播重开才签新的', async () => {
+  clearHuyaResolveCache()
+  const config = resolveConfig(huya, {})
+  // 测试房间页的 wsTime 是 0x6553f100 = t0：签名在 t0 到期
+  const withWsTime = hex => huyaTwoLineHtml.replaceAll('6553f100', hex)
+  const t0 = 1700000000000 - 10 * 60 * 1000
+  const upstream = huyaUpstream(withWsTime('6553f100'))
+  const seqidOf = url => new URL(url).searchParams.get('seqid')
+  const first = await resolveHuyaRoom('huya-660101', { now: t0, config, fetchImpl: upstream.fetchImpl })
+  assert.match(first.url, /^https:\/\/al\.hls\.huya\.com\//)
+  for (const minute of [1, 2, 3, 4]) {
+    const again = await resolveHuyaRoom('huya-660101', { now: t0 + minute * 61 * 1000, config, fetchImpl: upstream.fetchImpl })
+    assert.equal(again.url, first.url, `第 ${minute} 次刷新房间页后签名地址不变（每分钟重签会触发 CDN 整条线路 403）`)
+  }
+  assert.equal(upstream.hits.page, 5, '房间页每 60 秒刷新一次')
+  assert.deepEqual(upstream.hits.segment, { AL: 1 }, '复用的签名不再探分片')
+
+  // 签名过了 wsTime 被拒一次：用最新房间页（wsTime 已往后推）重签后放行，留在同一线路
+  upstream.html = withWsTime((0x6553f100 + 600).toString(16))
+  upstream.rules.AL = { manifest: [403, 200] }
+  const resigned = await resolveHuyaRoom('huya-660101', { now: t0 + 10 * 60 * 1000 + 5000, config, fetchImpl: upstream.fetchImpl })
+  assert.match(resigned.url, /^https:\/\/al\.hls\.huya\.com\//, '重签后仍是 AL 线路')
+  assert.notEqual(seqidOf(resigned.url), seqidOf(first.url), '重签换了 seqid')
+  assert.equal(new URL(resigned.url).searchParams.get('wsTime'), (0x6553f100 + 600).toString(16), '重签用的是最新房间页的 wsTime')
+  assert.deepEqual(upstream.hits.segment, { AL: 2 }, '刚签出来的地址先探一片分片')
+  assert.equal(upstream.hits.manifest.TX, undefined, '没有去碰别的线路')
+  const held = await resolveHuyaRoom('huya-660101', { now: t0 + 10 * 60 * 1000 + 8000, config, fetchImpl: upstream.fetchImpl })
+  assert.equal(held.url, resigned.url, '重签后的地址继续复用')
+
+  // 离到期还早的签名又被拒：是线路在拒这个出口，不再重签（AL 有过「首取放行、再取就拒」，重签只会抖），直接换线
+  upstream.rules.AL = { manifest: 403 }
+  const switched = await resolveHuyaRoom('huya-660101', { now: t0 + 12 * 60 * 1000, config, fetchImpl: upstream.fetchImpl })
+  assert.match(switched.url, /^https:\/\/tx\.hls\.huya\.com\//, 'AL 没到期的签名被拒，换到 TX')
+  assert.equal(upstream.hits.manifest.AL, 9, '没到期的签名被拒不重签，只多打一次就放弃 AL')
+
+  // 主播重开（流名变了）：旧签名作废，签新的
+  upstream.html = upstream.html.replaceAll('"sStreamName":"abc"', '"sStreamName":"abd"')
+  const restarted = await resolveHuyaRoom('huya-660101', { now: t0 + 13 * 60 * 1000, config, fetchImpl: upstream.fetchImpl })
+  assert.match(restarted.url, /^https:\/\/tx\.hls\.huya\.com\/src\/abd\.m3u8\?/, '新流名签新地址')
+  assert.notEqual(seqidOf(restarted.url), seqidOf(switched.url))
 })
 
 check('虎牙：线路排序与分片地址解析', () => {
