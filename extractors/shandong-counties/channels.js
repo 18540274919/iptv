@@ -283,7 +283,11 @@ const CITIES = [
 ]
 
 export const CHANNELS = CITIES.flatMap(([city, rows]) => rows.map(([org, id, name, rawName, options = {}]) => ({
-  org, id, city, name, rawName, key: `${org}-${id}`, noLogo: Boolean(options.noLogo), logoFrom: options.logoFrom || '',
+  org, id, city, name, rawName, key: `${org}-${id}`, ref: `sdcounty-${org}-${id}`,
+  noLogo: Boolean(options.noLogo), logoFrom: options.logoFrom || '',
 })))
 
+/** 地市顺序即分组顺序（「山东-济南」…「山东-菏泽」） */
+export const CITY_NAMES = CITIES.map(([city]) => city)
 export const CHANNEL_BY_KEY = new Map(CHANNELS.map(channel => [channel.key, channel]))
+export const CHANNEL_BY_REF = new Map(CHANNELS.map(channel => [channel.ref, channel]))

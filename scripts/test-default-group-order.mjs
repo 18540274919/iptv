@@ -137,4 +137,17 @@ check('旧配置未记录 iPanda 时自动紧跟文旅，显式拖拽后尊重�
   assert.deepEqual(explicit.map(group => group.name), ['iPanda', '体育', '文旅', 'B站'])
 })
 
+check('省内按地市拆的分组（山东-济南）算地方台，紧跟该省；旧配置没记录时也跟在该省后', () => {
+  const names = ['山东-济南', '江苏', '体育', '山东', '山东-潍坊', '国际', '河南']
+  assert.deepEqual(
+    sortGroupsByDefault(makeGroups(names)).map(group => group.name),
+    ['体育', '国际', '江苏', '山东', '山东-济南', '山东-潍坊', '河南'],
+  )
+  // 前缀不是省名的不算（「体育-今天」照旧按内容类排）
+  assert.deepEqual(sortGroupsByDefault(makeGroups(['山东', '体育-今天'])).map(group => group.name), ['体育-今天', '山东'])
+
+  const legacy = applyConfig(makeGroups(names), { ...baseConfig(), groupOrder: ['体育', '山东', '江苏', '国际', '河南'] })
+  assert.deepEqual(legacy.map(group => group.name), ['体育', '山东', '山东-济南', '山东-潍坊', '江苏', '国际', '河南'])
+})
+
 console.log(`\n全部通过：${passed}/${passed} ✅`)

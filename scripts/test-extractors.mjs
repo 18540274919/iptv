@@ -778,9 +778,9 @@ check('省市广电模块卡片只显示地区名，不带平台品牌', () => {
     iqilu: '山东', hangzhou: '杭州', ningbo: '宁波', jiaxing: '嘉兴', taizhou: '台州', shaoxing: '绍兴', jlntv: '吉林', jstv: '江苏', jxntv: '江西', kankanews: '上海', jiangmen: '江门', 'meizhou-hakka': '梅州', mgtv: '湖南', njtv: '南京', nmtv: '内蒙古',
     'quanzhou-minnan': '泉州', 'quanzhou-county': '晋江、石狮', putian: '莆田', ningde: '宁德', wuxi: '无锡', yangzhou: '扬州', nantong: '南通', yancheng: '盐城',
     ningxia: '宁夏', qinghai: '青海', qingdao: '青岛', qtv: '青岛景观', shaanxi: '陕西', shanxi: '山西', sztv: '深圳', tianjin: '天津',
-    xinjiang: '新疆', xizang: '西藏', yunnan: '云南', tdm: '澳门', 'shandong-counties': '山东市县',
+    xinjiang: '新疆', xizang: '西藏', yunnan: '云南', tdm: '澳门',
   }
-  const groupOverrides = { 'sichuan-cities': '四川', chengdu: '四川', 'gdsport-events': '广东', dalian: '辽宁', gztv: '广东', sztv: '广东', hangzhou: '浙江', ningbo: '浙江', jiaxing: '浙江', taizhou: '浙江', shaoxing: '浙江', jiangmen: '广东', 'meizhou-hakka': '广东', 'quanzhou-minnan': '福建', 'quanzhou-county': '福建', putian: '福建', ningde: '福建', wuxi: '江苏', yangzhou: '江苏', nantong: '江苏', yancheng: '江苏', njtv: '江苏', qingdao: '山东', qtv: '山东', 'shandong-counties': '山东' }
+  const groupOverrides = { 'sichuan-cities': '四川', chengdu: '四川', 'gdsport-events': '广东', dalian: '辽宁', gztv: '广东', sztv: '广东', hangzhou: '浙江', ningbo: '浙江', jiaxing: '浙江', taizhou: '浙江', shaoxing: '浙江', jiangmen: '广东', 'meizhou-hakka': '广东', 'quanzhou-minnan': '福建', 'quanzhou-county': '福建', putian: '福建', ningde: '福建', wuxi: '江苏', yangzhou: '江苏', nantong: '江苏', yancheng: '江苏', njtv: '江苏', qingdao: '山东', qtv: '山东' }
   for (const [id, name] of Object.entries(expectedNames)) {
     assert.equal(getModule(id)?.name, name, `${id} 卡片标题应只保留地区名`)
     assert.equal(
@@ -997,10 +997,10 @@ try {
     for (const id of ['bilibili-live', 'huya-live', 'douyu-live']) {
       assert.equal(modules.find(module => module.id === id)?.category, 'live', `${id} 应归入网络直播平台`)
     }
-    // 「海外」小节就是默认关、由用户自己打开的那几个，两边不能各说各的
+    // 默认关、由用户自己打开的：「海外」小节那几个，加上频道量大、只有本地少数人看的山东市县（#196 作者拍板）
     assert.deepEqual(
-      modules.filter(module => module.category === 'overseas').map(module => module.id).sort(),
       listModules().filter(module => module.defaultEnabled === false).map(module => module.id).sort(),
+      [...modules.filter(module => module.category === 'overseas').map(module => module.id), 'shandong-counties'].sort(),
     )
     assert.deepEqual(modules.filter(module => module.category === 'overseas').map(module => module.id).sort(), ['overseas', 'tdm'])
   })
@@ -1031,9 +1031,9 @@ try {
       '用户明确保存的关闭态不能被默认值覆盖')
   })
 
-  check('★ 海外频道、澳门默认关闭，用户打开后保持打开；没点过的开关不落盘', () => {
+  check('★ 海外频道、澳门、山东市县默认关闭，用户打开后保持打开；没点过的开关不落盘', () => {
     const optIn = listModules().filter(module => module.defaultEnabled === false).map(module => module.id)
-    assert.deepEqual(optIn.sort(), ['overseas', 'tdm'], '默认关的只有面向海外的这两个；新增要想清楚')
+    assert.deepEqual(optIn.sort(), ['overseas', 'shandong-counties', 'tdm'], '默认关的只有面向海外的两个和山东市县；新增要想清楚')
     const manager = newManager(undefined, { modules: {}, masterSwitchRetired: true })
     for (const id of optIn) assert.equal(manager.isModuleEnabled(getModule(id)), false, id)
     manager.setModuleEnabled('overseas', true)

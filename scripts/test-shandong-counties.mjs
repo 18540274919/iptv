@@ -2,16 +2,19 @@
 /**
  * 山东市县台回归测试：频道表（台名补地名、排除的广播 / 慢直播 / 德州转发不在表里）、接口解析
  * （只认图片当台标）、刷新只收主清单取得到的、停推 / 被撤 / 接口没取到分开报、台标的 noLogo 与
- * logoFrom、整轮接口都失败时报错保留上一轮。接口用假实现，响应按 2026-10-24 真实返回裁剪。
+ * logoFrom、按地市分组且只写固定 ref（地址的 k / t 每次都换，写进去频道主键就跟着变）、
+ * 播放时按机构缓存给当前地址、整轮接口都失败时报错保留上一轮。接口用假实现，响应按
+ * 2026-10-24 真实返回裁剪。
  *
  * 运行： node scripts/test-shandong-counties.mjs
  */
 import assert from 'node:assert/strict'
 
 import sd, { buildGroups } from '../extractors/shandong-counties/index.js'
-import { CHANNELS, CHANNEL_BY_KEY } from '../extractors/shandong-counties/channels.js'
-import { API_BASE, checkChannels, isLive, parseOrg } from '../extractors/shandong-counties/api.js'
-import { getModule } from '../extractors/registry.js'
+import { CHANNELS, CHANNEL_BY_KEY, CITY_NAMES } from '../extractors/shandong-counties/channels.js'
+import { API_BASE, checkChannels, createResolver, isLive, parseOrg } from '../extractors/shandong-counties/api.js'
+import { getModule, resolverFor } from '../extractors/registry.js'
+import { buildChannelId } from '../utils/playlistConfig.js'
 
 let passed = 0
 const check = (name, fn) => { fn(); passed++; console.log(`  ✅ ${name}`) }
@@ -117,24 +120,61 @@ await checkAsync('台标：noLogo 的不用接口图，logoFrom 借所属电视�
   assert.equal(results[1].logo, '')
 })
 
-check('输出：只写在推流的台，直链、不回看', () => {
+check('输出：按地市分组、只写在推流的台；写固定 ref 不写地址，不回看', () => {
+  assert.equal(CITY_NAMES.length, 16)
   const groups = buildGroups([
     { channel: CHANNEL_BY_KEY.get('537-1'), state: 'live', stream: DONGYING_NEWS, logo: 'https://img/l.png' },
     { channel: CHANNEL_BY_KEY.get('537-3'), state: 'offline' },
     { channel: CHANNEL_BY_KEY.get('303-1'), state: 'unknown' },
+    { channel: CHANNEL_BY_KEY.get('171-2'), state: 'live', stream: 'https://a/171.m3u8?k=1&t=2', logo: '' },
   ])
-  assert.equal(groups.length, 1)
-  assert.equal(groups[0].name, '山东')
-  assert.deepEqual(groups[0].dataList, [{
-    name: '东营新闻综合', url: DONGYING_NEWS, logo: 'https://img/l.png', catchup: 'none', opts: ['network-caching=3000'],
+  assert.deepEqual(groups.map(group => group.name), ['山东-济南', '山东-东营'])
+  assert.deepEqual(groups[1].dataList, [{
+    name: '东营新闻综合', deferredRef: 'sdcounty-537-1', logo: 'https://img/l.png', catchup: 'none', opts: ['network-caching=3000'],
   }])
+  assert.equal('relayHls' in groups[1].dataList[0], false, '子清单绑取主清单的 IP，必须 302 给播放器自己取')
+})
+
+check('频道主键不随地址里的 k / t 变：用户的隐藏、改名、换组不会每轮失效', () => {
+  const id = url => buildChannelId({ groupName: '山东-东营', channelName: '东营新闻综合', url })
+  assert.equal(id('${replace}/sdcounty-537-1'), id('${replace}/sdcounty-537-1'))
+  // 反例：要是把官方地址写进播放列表，两轮刷新的主键就不同
+  assert.notEqual(id(`${DONGYING_NEWS}`), id(DONGYING_NEWS.replace('k=82690c', 'k=000000')))
+})
+
+await checkAsync('播放：按机构缓存给当前地址，过期重取，同机构并发只打一次接口', async () => {
+  let clock = 0
+  const { fetchImpl, calls } = fakeFetch()
+  const resolver = createResolver({ fetchImpl, ttlMs: 1000, now: () => clock })
+  const [a, b] = await Promise.all([resolver.resolve('sdcounty-537-1'), resolver.resolve('sdcounty-537-3')])
+  assert.equal(a.url, DONGYING_NEWS)
+  assert.match(b.url, /202304_1651887564182982656/)
+  assert.equal(calls.length, 1)
+  await resolver.resolve('sdcounty-537-1')
+  assert.equal(calls.length, 1)
+  clock = 1001
+  await resolver.resolve('sdcounty-537-1')
+  assert.equal(calls.length, 2)
+
+  // 刷新时取到的机构数据直接进缓存，播放不再打接口
+  const warm = createResolver({ fetchImpl, now: () => 0 })
+  warm.remember(171, parseOrg(ORGS[171]))
+  assert.match((await warm.resolve('sdcounty-171-20')).url, /b6df53d1f77f4e068055b4eac603bdcb/)
+  assert.equal(calls.length, 2)
+
+  assert.match((await resolver.resolve('sdcounty-537-7')).desc, /不再列出东营科教/)
+  assert.match((await resolver.resolve('sdcounty-1-1')).desc, /引用无效/)
+  const broken = createResolver({ fetchImpl: async () => { throw new Error('ENOTFOUND') } })
+  const failed = await broken.resolve('sdcounty-537-1')
+  assert.equal(failed.url, '')
+  assert.match(failed.desc, /ENOTFOUND/)
 })
 
 await checkAsync('fetch：报跳过与警告；接口全部取不到时报错，保留上一轮', async () => {
   const realChannels = CHANNELS.length
   const { fetchImpl } = fakeFetch({ dead: new Set([ORGS[537].data[1].stream]) })
   const result = await sd.fetch({}, { fetchImpl })
-  const names = result.groups[0].dataList.map(item => item.name)
+  const names = result.groups.flatMap(group => group.dataList.map(item => item.name))
   assert.ok(names.includes('东营新闻综合'))
   assert.ok(result.meta.skipped.includes('东营公共：台方当前没有推流'))
   assert.ok(result.meta.skipped.includes('东营科教：官方已不再列出这台'))
@@ -144,11 +184,14 @@ await checkAsync('fetch：报跳过与警告；接口全部取不到时报错，
   await assert.rejects(sd.fetch({}, { fetchImpl: async () => { throw new Error('ENOTFOUND') } }), /ENOTFOUND/)
 })
 
-check('模块已注册：并进山东分组、带节目单、直链不走解析、不暴露配置项', () => {
+check('模块已注册：默认关闭、按地市分组（不并进山东）、按 ref 路由、带节目单、不暴露配置项', () => {
   const module = getModule('shandong-counties')
   assert.ok(module)
-  assert.equal(module.outputGroupName, '山东')
-  assert.equal(module.capabilities.resolve, false)
+  assert.equal(module.defaultEnabled, false)
+  assert.equal(module.outputGroupName, undefined)
+  assert.equal(module.capabilities.resolve, true)
+  assert.equal(resolverFor('sdcounty-537-1')?.id, 'shandong-counties')
+  assert.equal(resolverFor('sdcounty-1-1'), null)
   assert.equal(module.capabilities.epg, true)
   assert.equal(module.capabilities.catchup, false)
   assert.deepEqual(module.configSchema, [])

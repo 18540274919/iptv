@@ -109,7 +109,6 @@ export async function programmes(key, day, { fetchImpl = globalThis.fetch, timeo
 
 export default {
   days: 2,
-  // 都是直链频道：ref 只作稳定标识，流水线按台名对上
-  channels: () => CHANNELS.map(row => ({ ref: `sdcounty-${row.key}`, name: row.name, key: row.key })),
+  channels: () => CHANNELS.map(row => ({ ref: row.ref, name: row.name, key: row.key })),
   programmes,
 }

@@ -4,13 +4,17 @@
  * 实测（2026-10-24，详见 README.md）：
  * - `GET /v1/app/play/tv/live?orgid=<机构号>` 免登录、不看 Referer，返回该区县融媒体中心的全部直播：
  *   每条有 id、name、stream（HLS 主清单）、logo / icon。一个机构一次请求就拿到全部频道。
- * - stream 带 k / t 两个参数，每次请求都换，但入口去掉 k、改掉 t 照样 200，目前不校验。
- *   主清单只有一档，子清单在网宿 CDN 上、按取主清单的出口 IP 绑定（wsBindIP），
- *   所以地址直接交给播放器：播放器自己取主清单，子清单就绑在播放器的 IP 上。
+ * - stream 带 k / t 两个参数，每次请求都换。alivealone302 上的去掉 k、改掉 t 照样 200；
+ *   blivealone302 上的 t 是约一小时后的整点、去掉签名就取不到。所以地址不能写进播放列表：
+ *   频道主键按地址算，k / t 一变，用户对这台的隐藏、改名、换组、排序就全部失效。
+ *   播放列表里写固定的 ref，播放时由 resolve 给当前地址，app 回 302。
+ * - 主清单只有一档，子清单在网宿 CDN 上、按取主清单的出口 IP 绑定（wsBindIP），所以
+ *   必须是 302 让播放器自己取主清单，不能经本机中继（不标 relayHls）。
  * - 停推的台照样出现在接口里，主清单 404（少数第三方 CDN 上的会一直挂着不回）。
  *   刷新时逐台取一次主清单，只输出能取到的。
  */
 import { proxyAwareFetch } from '../../utils/systemProxy.js'
+import { CHANNEL_BY_REF } from './channels.js'
 
 export const API_BASE = 'https://app.litenews.cn/v1/app/play/tv'
 export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -84,14 +88,16 @@ async function pool(items, concurrency, task) {
  * → [{ channel, state: 'live' | 'offline' | 'gone' | 'unknown', stream?, logo?, error? }]
  * gone = 接口里已经没有这台；unknown = 所在机构的接口这轮没取到，给不出地址。
  */
-export async function checkChannels(channels, { fetchImpl = proxyAwareFetch, timeoutMs = 10000, concurrency = 6 } = {}) {
+export async function checkChannels(channels, { fetchImpl = proxyAwareFetch, timeoutMs = 10000, concurrency = 6, onOrg } = {}) {
   const borrowed = channel => channel.logoFrom ? channel.logoFrom.split('-').map(Number) : null
   const orgs = [...new Set(channels.flatMap(channel => [channel.org, borrowed(channel)?.[0]]).filter(Boolean))]
   const orgData = new Map()
   const orgErrors = new Map()
   await pool(orgs, concurrency, async org => {
     try {
-      orgData.set(org, await fetchOrg(org, { fetchImpl, timeoutMs }))
+      const data = await fetchOrg(org, { fetchImpl, timeoutMs })
+      orgData.set(org, data)
+      onOrg?.(org, data)
     } catch (error) {
       orgErrors.set(org, error?.message || String(error))
     }
@@ -120,4 +126,42 @@ export async function checkChannels(channels, { fetchImpl = proxyAwareFetch, tim
     results[index] = { channel, state: 'live', stream: entry.stream, logo }
   })
   return results
+}
+
+/**
+ * 播放时给地址：按机构缓存接口结果（刷新时顺带写入），过期再取一次。
+ * 缓存 20 分钟：blivealone302 的签名约一小时后到期，留足余量；同一机构并发请求只打一次接口。
+ */
+export function createResolver({ fetchImpl = proxyAwareFetch, ttlMs = 20 * 60 * 1000, now = Date.now } = {}) {
+  const cache = new Map()     // org → { at, data }
+  const pending = new Map()   // org → Promise<data>
+
+  function remember(org, data) {
+    cache.set(org, { at: now(), data })
+  }
+
+  async function orgData(org) {
+    const hit = cache.get(org)
+    if (hit && now() - hit.at < ttlMs) return hit.data
+    if (!pending.has(org)) {
+      pending.set(org, fetchOrg(org, { fetchImpl })
+        .then(data => { remember(org, data); return data })
+        .finally(() => pending.delete(org)))
+    }
+    return pending.get(org)
+  }
+
+  async function resolve(ref) {
+    const channel = CHANNEL_BY_REF.get(String(ref || ''))
+    if (!channel) return { url: '', desc: '山东市县：频道引用无效' }
+    try {
+      const entry = (await orgData(channel.org)).get(channel.id)
+      if (!entry) return { url: '', desc: `山东市县：官方已不再列出${channel.name}` }
+      return { url: entry.stream, desc: '' }
+    } catch (error) {
+      return { url: '', desc: `山东市县：闪电新闻接口请求失败（${error?.message || error}）` }
+    }
+  }
+
+  return { resolve, remember, clear: () => cache.clear() }
 }
