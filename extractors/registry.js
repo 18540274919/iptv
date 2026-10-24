@@ -216,6 +216,7 @@ import yancheng from './yancheng/index.js'
 import yunnan from './yunnan/index.js'
 import tdm from './tdm/index.js'
 import guangdianyun from './guangdianyun/index.js'
+import shandongCounties from './shandong-counties/index.js'
 import overseas from './overseas/index.js'
 
 // 模块 id 会进 sourceId 并写进 EXTINF 属性值，不消毒就是注入面。
@@ -295,6 +296,7 @@ const MODULES = [
   mgtv,
   // 市县台跟在各省级、地市模块之后：并进同省分组时排在省台、市台后面
   guangdianyun,
+  shandongCounties,
   // 海外频道排最后：并进体育、文旅等现有分组时，跟在各台官方频道后面
   overseas,
 ]
