@@ -36,6 +36,9 @@
  *   refreshConfigurable   boolean 可选；false 表示刷新策略由模块自动管理，后台只读
  *   refreshDescription    string  可选；自动刷新策略的后台说明
  *   outputGroupName       string  可选；播放列表统一分组名，并合并模块原有的多个子组
+ *   region                string  可选；后台源管理把同一地区的模块收进一个面板。不声明时
+ *                                 outputGroupName 是省级地区（REGION_NAMES）就用它；分组名不是
+ *                                 地区（上海景观）或按地市拆组（山东市县）的模块显式声明
  *   preserveGroupSuffixes array   可选；命中这些后缀的特殊分组不被 outputGroupName 覆盖
  *   channelHlsMode        string  可选；'proxy' 或 'relay'，在输出时覆盖频道缓存中的
  *                                 HLS 路由标记，适合整个平台统一要求代理的模块
@@ -361,6 +364,23 @@ for (const module of MODULES) {
     throw new Error(`抓取模块 id 重复: ${module.id}`)
   }
   registry.set(module.id, module)
+}
+
+// 后台按地区收面板用的地区名：省、自治区、直辖市和港澳台
+export const REGION_NAMES = new Set([
+  '北京', '天津', '上海', '重庆',
+  '河北', '山西', '辽宁', '吉林', '黑龙江',
+  '江苏', '浙江', '安徽', '福建', '江西', '山东',
+  '河南', '湖北', '湖南', '广东', '海南',
+  '四川', '贵州', '云南', '陕西', '甘肃', '青海',
+  '内蒙古', '广西', '西藏', '宁夏', '新疆',
+  '香港', '澳门', '台湾',
+])
+
+/** 模块所属地区（后台面板用）；全国性的、平台类的返回空串。 */
+export function moduleRegion(module) {
+  if (typeof module?.region === 'string') return module.region
+  return REGION_NAMES.has(module?.outputGroupName) ? module.outputGroupName : ''
 }
 
 /** 全部模块，顺序即后台展示顺序。 */

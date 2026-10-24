@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 
-import { listModules, getModule, sourceIdOf, resolverFor, validateModule, MODULE_ID_RE, MODULE_CATEGORIES } from '../extractors/registry.js'
+import { listModules, getModule, sourceIdOf, resolverFor, validateModule, MODULE_ID_RE, MODULE_CATEGORIES, REGION_NAMES } from '../extractors/registry.js'
 import { clearUrlCache, channel as playbackChannel } from '../utils/appUtils.js'
 import { qualityFrom } from '../utils/qualityOverride.js'
 import {
@@ -1003,6 +1003,17 @@ try {
       [...modules.filter(module => module.category === 'overseas').map(module => module.id), 'shandong-counties'].sort(),
     )
     assert.deepEqual(modules.filter(module => module.category === 'overseas').map(module => module.id).sort(), ['overseas', 'tdm'])
+  })
+
+  check('模块地区透传给后台：省台、地市台、景观归到同一地区，全国性的不归', () => {
+    const regionOf = Object.fromEntries(newManager().getState().modules.map(module => [module.id, module.region]))
+    for (const id of ['iqilu', 'qingdao', 'qtv', 'shandong-counties']) assert.equal(regionOf[id], '山东', id)
+    for (const id of ['kankanews', 'songjiang']) assert.equal(regionOf[id], '上海', id)
+    for (const id of ['fengshows', 'hkstv']) assert.equal(regionOf[id], '香港', id)
+    for (const id of ['guangdianyun', 'livechina', 'ipanda', 'asian-live', 'yangshipin', 'overseas']) assert.equal(regionOf[id], '', id)
+    for (const module of listModules()) {
+      if (module.region !== undefined) assert.ok(REGION_NAMES.has(module.region), `${module.id} 的 region 不是地区名`)
+    }
   })
 
   check('注册表允许的每个分类，后台源管理都有对应的小节（漏了的话那类卡片整片不显示）', () => {
