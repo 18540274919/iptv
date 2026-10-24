@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 
-import { listModules, getModule, sourceIdOf, resolverFor, validateModule, MODULE_ID_RE, MODULE_CATEGORIES, REGION_NAMES } from '../extractors/registry.js'
+import { listModules, getModule, sourceIdOf, resolverFor, validateModule, MODULE_ID_RE, MODULE_CATEGORIES } from '../extractors/registry.js'
 import { clearUrlCache, channel as playbackChannel } from '../utils/appUtils.js'
 import { qualityFrom } from '../utils/qualityOverride.js'
 import {
@@ -1010,9 +1010,16 @@ try {
     for (const id of ['iqilu', 'qingdao', 'qtv', 'shandong-counties']) assert.equal(regionOf[id], '山东', id)
     for (const id of ['kankanews', 'songjiang']) assert.equal(regionOf[id], '上海', id)
     for (const id of ['fengshows', 'hkstv']) assert.equal(regionOf[id], '香港', id)
-    for (const id of ['guangdianyun', 'livechina', 'ipanda', 'asian-live', 'yangshipin', 'overseas']) assert.equal(regionOf[id], '', id)
+    // 专题面板：作者 10-24 定名
+    assert.equal(regionOf['asian-live'], '国际')
+    assert.equal(regionOf.livechina, '直播中国')
+    assert.equal(regionOf.ipanda, 'iPanda')
+    for (const id of ['yangshipin', 'overseas']) assert.equal(regionOf[id], '', id)
+    const state = newManager().getState().modules
+    assert.equal(state.find(module => module.id === 'iqilu').regionIsArea, true)
+    assert.equal(state.find(module => module.id === 'livechina').regionIsArea, false)
     for (const module of listModules()) {
-      if (module.region !== undefined) assert.ok(REGION_NAMES.has(module.region), `${module.id} 的 region 不是地区名`)
+      if (module.region !== undefined) assert.ok(typeof module.region === 'string' && module.region.trim(), `${module.id} 的 region 要是非空名字`)
     }
   })
 

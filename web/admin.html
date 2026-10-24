@@ -6178,14 +6178,18 @@
             }).join('');
             const activeModules = shown.filter(m => categoryOf(m) === active.id);
 
-            // 免账号小节：全国性、平台类的模块平铺在前，地方模块按地区收进面板（只有一个模块的地区也收，
-            // 统一样式，以后加地市模块直接进来）。面板标题的数量和红点按整个地区算，不跟筛选走；
+            // 免账号小节：模块按面板收（省级地区，或国际、直播中国这类专题；只有一个模块的也收，
+            // 统一样式，以后加模块直接进来），不归面板的平铺在前。面板标题的数量和红点按整个地区算，不跟筛选走；
             // 「已启用 / 已关闭」筛选时有命中的面板自动展开，不然筛完还得一个个点开看。
             const modulesHtml = list => {
                 const grid = items => `<div class="source-grid">${items.map(m => moduleCardHtml(m, active)).join('')}</div>`;
                 if (active.id !== 'standard') return grid(list);
                 const loose = list.filter(m => !m.region);
-                const regions = [...new Set(list.filter(m => m.region).map(m => m.region))];
+                // 专题面板（国际、直播中国、iPanda）在前，各省面板在后；同类里按注册表顺序
+                const regions = [...new Set([
+                    ...list.filter(m => m.region && !m.regionIsArea),
+                    ...list.filter(m => m.region && m.regionIsArea),
+                ].map(m => m.region))];
                 const panels = regions.map(region => {
                     const members = list.filter(m => m.region === region);
                     const all = modules.filter(m => categoryOf(m) === active.id && m.region === region);

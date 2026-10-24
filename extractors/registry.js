@@ -36,9 +36,10 @@
  *   refreshConfigurable   boolean 可选；false 表示刷新策略由模块自动管理，后台只读
  *   refreshDescription    string  可选；自动刷新策略的后台说明
  *   outputGroupName       string  可选；播放列表统一分组名，并合并模块原有的多个子组
- *   region                string  可选；后台源管理把同一地区的模块收进一个面板。不声明时
- *                                 outputGroupName 是省级地区（REGION_NAMES）就用它；分组名不是
- *                                 地区（上海景观）或按地市拆组（山东市县）的模块显式声明
+ *   region                string  可选；后台源管理「免账号」里的面板名。不声明时 outputGroupName
+ *                                 是省级地区（REGION_NAMES）就用它；分组名不是地区（上海景观）、
+ *                                 按地市拆组（山东市县）的显式声明。不是地区的专题面板（国际、
+ *                                 直播中国、iPanda）也用它，排在各省面板前面
  *   preserveGroupSuffixes array   可选；命中这些后缀的特殊分组不被 outputGroupName 覆盖
  *   channelHlsMode        string  可选；'proxy' 或 'relay'，在输出时覆盖频道缓存中的
  *                                 HLS 路由标记，适合整个平台统一要求代理的模块
@@ -380,7 +381,7 @@ export const REGION_NAMES = new Set([
   '香港', '澳门', '台湾',
 ])
 
-/** 模块所属地区（后台面板用）；全国性的、平台类的返回空串。 */
+/** 模块所属面板（后台用）：省级地区或专题名；不归面板的返回空串。 */
 export function moduleRegion(module) {
   if (typeof module?.region === 'string') return module.region
   return REGION_NAMES.has(module?.outputGroupName) ? module.outputGroupName : ''
