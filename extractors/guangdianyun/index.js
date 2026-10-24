@@ -19,6 +19,8 @@ export function buildGroups(results) {
         logo: channel.logo || '',
         catchup: 'none',
         opts: ['network-caching=3000'],
+        // 地市分组里的市台（淄博新闻综合、菏泽一套二套）排到该组最前，区县台跟在后面
+        ...(channel.city ? { leading: true } : {}),
       })),
     }))
     .filter(group => group.dataList.length)
@@ -29,7 +31,7 @@ export default {
   name: '市县台',
   description: '广电云平台托管的市县级电视台官方直播，覆盖 20 个省区市、按省归组，另有各地融媒体中心的慢直播放在「慢直播」分组；每轮只收正在推流的，停推的恢复后自动出现。',
   capabilities: { cache: 'disk', resolve: true, epg: true, catchup: false },
-  catalogVersion: 3,
+  catalogVersion: 4,
   relayProxyCompatible: true,
   defaultRefreshMinutes: 60,
   refreshConfigurable: false,

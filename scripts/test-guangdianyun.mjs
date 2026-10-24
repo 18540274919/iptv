@@ -154,6 +154,10 @@ await checkAsync('刷新：只收 liveStatus=1；被删的和停推的跳过；�
   const withSlow = buildGroups([...results, { channel: CHANNEL_BY_REF.get('gdy-3900-3744'), state: 'live' }])
   assert.deepEqual(withSlow.map(group => group.name), ['江苏', '广西', SLOW_GROUP])
   assert.equal(withSlow.at(-1).dataList[0].name, '许昌春水桥')
+  // 只有地市分组里的市台打头，其余频道不带 leading
+  const zibo = buildGroups([{ channel: CHANNEL_BY_REF.get('gdy-2308-3185'), state: 'live' }, ...results])
+  assert.equal(zibo.find(group => group.name === '山东-淄博').dataList[0].leading, true)
+  assert.equal(groups[1].dataList[0].leading, undefined)
   const liuzhou = groups[1].dataList[0]
   assert.equal(liuzhou.deferredRef, 'gdy-1902-3370')
   assert.equal(liuzhou.relayHls, true)
