@@ -46,10 +46,10 @@ const rows = [
   { pid: 3406, uin: 1779, province: '山西', name: '交城电视台', rawName: '交城广播电视台' },
   { pid: 3407, uin: 1723, province: '山西', name: '潞州融媒', rawName: '潞州融媒' },
   { pid: 2511, uin: 3580, province: '山西', name: '芮城综合', rawName: '芮城综合频道' },
-  // 山东
-  { pid: 2308, uin: 3185, province: '山东', name: '淄博新闻综合', rawName: '新闻综合频道' },
-  { pid: 3492, uin: 4042, province: '山东', name: '菏泽一套', rawName: '菏泽一套' },
-  { pid: 3493, uin: 4042, province: '山东', name: '菏泽二套', rawName: '菏泽二套' },
+  // 山东：输出到「山东-淄博」「山东-菏泽」，与山东市县模块的地市分组放在一起（那边的淄博、菏泽组只有区县台，不撞名）
+  { pid: 2308, uin: 3185, province: '山东', city: '淄博', name: '淄博新闻综合', rawName: '新闻综合频道' },
+  { pid: 3492, uin: 4042, province: '山东', city: '菏泽', name: '菏泽一套', rawName: '菏泽一套' },
+  { pid: 3493, uin: 4042, province: '山东', city: '菏泽', name: '菏泽二套', rawName: '菏泽二套' },
   // 安徽
   { pid: 1588, uin: 2465, province: '安徽', name: '宁国新闻综合', rawName: '新闻综合频道' },
   { pid: 3390, uin: 4180, province: '安徽', name: '宿松新闻综合', rawName: '新闻综合' },
@@ -288,8 +288,8 @@ const rows = [
 
 export const CHANNELS = Object.freeze(rows.map(row => Object.freeze({
   ...row,
-  // 慢直播统一一个分组；电视台按省归组
-  group: row.group || row.province,
+  // 慢直播统一一个分组；电视台按省归组，标了 city 的放「省-市」分组（目前只有山东）
+  group: row.group || (row.city ? `${row.province}-${row.city}` : row.province),
   key: `${row.pid}-${row.uin}`,
   ref: `gdy-${row.pid}-${row.uin}`,
 })))

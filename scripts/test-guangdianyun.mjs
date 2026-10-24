@@ -115,7 +115,8 @@ check('频道表：引用唯一；电视台按省归组，慢直播统一一组�
   for (const row of CHANNELS) {
     assert.match(row.ref, /^gdy-\d+-\d+$/)
     assert.ok(row.province && row.name && row.rawName, row.ref)
-    assert.equal(row.group, row.group === SLOW_GROUP ? SLOW_GROUP : row.province, row.ref)
+    const expected = row.group === SLOW_GROUP ? SLOW_GROUP : row.city ? `${row.province}-${row.city}` : row.province
+    assert.equal(row.group, expected, row.ref)
     if (row.group === SLOW_GROUP) assert.equal(row.logo, undefined, `${row.ref} 慢直播不配台标`)
     if (row.logo) assert.match(row.logo, /^https:\/\/static-pro\.guangdianyun\.tv\/\d+\/program\//)
   }
@@ -129,6 +130,11 @@ check('频道表：引用唯一；电视台按省归组，慢直播统一一组�
   assert.equal(CHANNEL_BY_REF.get('gdy-170-1356').name, '乐清综合')
   assert.equal(CHANNEL_BY_REF.get('gdy-171-1356').name, '乐清新闻')
   assert.equal(CHANNEL_BY_REF.get('gdy-3706-4436').group, '河南')
+  // 山东三台跟山东市县模块的地市分组走
+  assert.equal(CHANNEL_BY_REF.get('gdy-2308-3185').group, '山东-淄博')
+  assert.equal(CHANNEL_BY_REF.get('gdy-3492-4042').group, '山东-菏泽')
+  assert.equal(CHANNEL_BY_REF.get('gdy-3493-4042').group, '山东-菏泽')
+  assert.ok(!GROUPS.includes('山东'))
   assert.equal(CHANNEL_BY_REF.get('gdy-3900-3744').group, SLOW_GROUP)
 })
 
