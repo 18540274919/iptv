@@ -298,9 +298,10 @@ const MODULES = [
   livechina,
   ipanda,
   mgtv,
+  // 山东市县在市县台之前：「山东-济南」…「山东-菏泽」按它的地市顺序先建好，市县台的淄博、菏泽两台再并进去
+  shandongCounties,
   // 市县台跟在各省级、地市模块之后：并进同省分组时排在省台、市台后面
   guangdianyun,
-  shandongCounties,
   // 海外频道排最后：并进体育、文旅等现有分组时，跟在各台官方频道后面
   overseas,
 ]
