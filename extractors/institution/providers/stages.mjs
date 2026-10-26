@@ -14,10 +14,33 @@ const knownPages = new Map([
 const decode = value => String(value || '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
 const clean = value => decode(value).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 
-async function read(url, fetchImpl) {
-  const response = await fetchImpl(url, { signal: AbortSignal.timeout(20_000) });
-  if (!response.ok) throw new Error(`音乐厅官方入口 HTTP ${response.status}`);
-  return response.text();
+function requestFailure(stage, url, cause) {
+  const codes = new Set(), seen = new Set();
+  function inspect(error, depth = 0) {
+    if (!error || depth > 5 || seen.has(error)) return;
+    seen.add(error);
+    if (typeof error.code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(error.code)) codes.add(error.code);
+    if (error.name === 'TimeoutError') codes.add('REQUEST_TIMEOUT');
+    if (error.name === 'AbortError') codes.add('REQUEST_ABORTED');
+    inspect(error.cause, depth + 1);
+    for (const nested of (Array.isArray(error.errors) ? error.errors : []).slice(0, 5)) inspect(nested, depth + 1);
+  }
+  inspect(cause);
+  const host = new URL(url).hostname;
+  return new Error(`${stage}请求失败（${host}${codes.size ? `；${[...codes].slice(0, 3).join(' / ')}` : '；网络连接未完成'}）`, { cause });
+}
+
+async function read(url, fetchImpl, stage) {
+  let response;
+  try {
+    response = await fetchImpl(url, { signal: AbortSignal.timeout(20_000) });
+  } catch (error) { throw requestFailure(stage, url, error); }
+  if (!response.ok) {
+    try { await response.body?.cancel(); } catch {}
+    throw new Error(`${stage}（${new URL(url).hostname}）HTTP ${response.status}`);
+  }
+  try { return await response.text(); }
+  catch (error) { throw requestFailure(stage, url, error); }
 }
 
 export function parseCatalogue(html) {
@@ -61,13 +84,16 @@ export function parseNdrPlayer(html) {
 async function resolveElbPage(id, pageUrl, fetchImpl) {
   const page = new URL(pageUrl);
   if (page.origin !== venueOrigin || !/^\/en\/mediatheque\/[^/]+\/\d+$/.test(page.pathname)) throw new Error('无效音乐厅演出详情');
-  const html = await read(page.href, fetchImpl);
+  const html = await read(page.href, fetchImpl, '易北爱乐演出详情');
   const title = clean(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1]);
   const playerUrl = decode(html.match(/data-url="(https:\/\/www\.ndr\.de\/[^"<>]+~ardplayer\.html)"/)?.[1]);
   if (!title || !playerUrl || excluded.test(title)) throw new Error('音乐厅官网当前未公开此演出的授权长视频。');
-  const media = parseNdrPlayer(await read(playerUrl, fetchImpl));
+  const media = parseNdrPlayer(await read(playerUrl, fetchImpl, 'NDR/ARD 播放器'));
   if (!media) throw new Error('NDR/ARD 官方播放器当前没有开放的非宗教长演出。');
-  const response = await fetchImpl(media.url, { headers: { Referer: playerUrl, Range: 'bytes=0-0' }, signal: AbortSignal.timeout(15_000) });
+  let response;
+  try {
+    response = await fetchImpl(media.url, { headers: { Referer: playerUrl, Range: 'bytes=0-0' }, signal: AbortSignal.timeout(15_000) });
+  } catch (error) { throw requestFailure('NDR/ARD 演出媒体', media.url, error); }
   await response.body?.cancel();
   if (!response.ok || !/^video\/mp4/i.test(response.headers.get('content-type') || '')) throw new Error(`官方演出媒体当前不可访问（HTTP ${response.status}），不尝试绕过地区或访问限制。`);
   return {
@@ -84,7 +110,7 @@ export async function discover({ fetchImpl = fetch } = {}) {
     'Bergen Phil Live 正确域名为 bergenphilive.no；官网免费档案可读，但本机两场 Vimeo 播放器返回 401、配置返回 403，本轮未接入。',
     'Kennedy Center 本机入口 HTTP 403；Lincoln Center 当前官网回看导向 YouTube，均未绕过访问限制或引入 yt-dlp。',
   ];
-  const entries = parseCatalogue(await read(provider.officialUrl, fetchImpl));
+  const entries = parseCatalogue(await read(provider.officialUrl, fetchImpl, '易北爱乐目录'));
   const results = await settleRequests(entries.map(entry => resolveElbPage(entry.id, entry.pageUrl, fetchImpl)));
   const items = results.flatMap(result => {
     if (result.status === 'fulfilled') return [result.value];
@@ -96,7 +122,7 @@ export async function discover({ fetchImpl = fetch } = {}) {
 
 export async function resolve(id, { fetchImpl = fetch } = {}) {
   if (!/^elb-\d+$/.test(id)) throw new Error('无效音乐厅演出 ID');
-  if (!knownPages.has(id)) parseCatalogue(await read(provider.officialUrl, fetchImpl));
+  if (!knownPages.has(id)) parseCatalogue(await read(provider.officialUrl, fetchImpl, '易北爱乐目录'));
   const pageUrl = knownPages.get(id);
   if (!pageUrl) throw new Error('音乐厅当前公开目录中没有此演出。');
   return resolveElbPage(id, pageUrl, fetchImpl);

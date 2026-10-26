@@ -13,7 +13,7 @@ import * as auctions from '../extractors/institution/providers/auctions.mjs';
 import { toItem as shanghai } from '../extractors/institution/providers/shanghai.mjs';
 import { toItem as zhejiang } from '../extractors/institution/providers/zhejiang.mjs';
 import { itemFromDetail as culturecloud } from '../extractors/institution/providers/culturecloud.mjs';
-import { parseNdrPlayer } from '../extractors/institution/providers/stages.mjs';
+import { parseNdrPlayer, discover as discoverStages, resolve as resolveStage } from '../extractors/institution/providers/stages.mjs';
 
 const fixture = name => readFileSync(new URL(`./fixtures/institution/${name}`, import.meta.url), 'utf8');
 const json = name => JSON.parse(fixture(name));
@@ -89,6 +89,45 @@ test('NDR 真实 ARD 音乐会配置排除地区限制、DRM、未知时长及�
   for (const value of [90, undefined, 'not-a-duration']) assert.equal(mutate(c => { c.mc.meta.durationSeconds = value; }), null);
   assert.equal(mutate(c => { c.mc.meta.title = 'Church worship concert'; }), null);
   assert.equal(mutate(c => { c.mc.streams[0].media[0].url = 'https://unidentified.example.com/video.mp4'; }), null);
+});
+
+test('易北爱乐目录失败保留域名与底层网络原因，不暴露请求路径或查询凭据', async () => {
+  const low = Object.assign(new Error('https://private.example/path?token=do-not-log'), { code: 'ENETUNREACH' });
+  const failure = new TypeError('fetch failed', { cause: new AggregateError([low, Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })]) });
+  await assert.rejects(discoverStages({ fetchImpl: async () => { throw failure; } }), error => {
+    assert.match(error.message, /易北爱乐目录请求失败.*www\.elbphilharmonie\.de.*ENETUNREACH.*ETIMEDOUT/);
+    assert.doesNotMatch(error.message, /private\.example|do-not-log|token=|\/path/);
+    return true;
+  });
+});
+
+test('易北爱乐分别指出详情、NDR播放器及媒体连接失败，HTTP拒绝保持原状态', async () => {
+  const detail = '<h1>Official concert</h1><div data-url="https://www.ndr.de/concert~ardplayer.html"></div>';
+  const player = encodePlayer(json('ndr-public.json'));
+  for (const [failHost, label] of [
+    ['www.elbphilharmonie.de', '易北爱乐演出详情'],
+    ['www.ndr.de', 'NDR/ARD 播放器'],
+    ['ndr-progressive.ard-mcdn.de', 'NDR/ARD 演出媒体'],
+  ]) {
+    await assert.rejects(resolveStage('elb-1234', { fetchImpl: async url => {
+      const host = new URL(url).hostname;
+      if (host === failHost) throw new TypeError('fetch failed', { cause: Object.assign(new Error('reset'), { code: 'ECONNRESET' }) });
+      return new Response(host === 'www.elbphilharmonie.de' ? detail : player);
+    } }), error => {
+      assert.ok(error.message.startsWith(`${label}请求失败`));
+      assert.ok(error.message.includes(failHost));
+      assert.match(error.message, /ECONNRESET/);
+      return true;
+    });
+  }
+  let calls = 0;
+  await assert.rejects(discoverStages({ fetchImpl: async () => { calls++; return new Response('denied', { status: 403 }); } }), /易北爱乐目录.*HTTP 403/);
+  assert.equal(calls, 1, 'HTTP拒绝不会改用其他入口');
+});
+
+test('易北爱乐超时和读取响应中途断开也能显示具体失败环节', async () => {
+  await assert.rejects(discoverStages({ fetchImpl: async () => { throw new DOMException('timeout', 'TimeoutError'); } }), /易北爱乐目录请求失败.*REQUEST_TIMEOUT/);
+  await assert.rejects(discoverStages({ fetchImpl: async () => ({ ok: true, text: async () => { throw new TypeError('terminated', { cause: Object.assign(new Error('socket closed'), { code: 'UND_ERR_SOCKET' }) }); } }) }), /易北爱乐目录请求失败.*UND_ERR_SOCKET/);
 });
 
 test('拍卖机构播放器仅选已核实 CDN 的无 DRM 副本，不因高画质接受未知来源', () => {

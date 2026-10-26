@@ -1,5 +1,7 @@
+import { proxyAwareFetch } from '../../utils/systemProxy.js';
+
 export async function fetchWithTimeout(url, init = {}) {
-  return fetch(url, { ...init, signal: init.signal || AbortSignal.timeout(25000) });
+  return proxyAwareFetch(url, { ...init, signal: init.signal || AbortSignal.timeout(25000) });
 }
 export function selectMediaTracks(media) {
   const streams = media.streams || [];
