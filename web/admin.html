@@ -4764,7 +4764,7 @@
                 <div class="settings-editor-card" style="margin-top: 4px;">
                     <div>
                         <div style="font-size:16px; font-weight:600; color:#333;">用户管理（一人一源）</div>
-                        <div class="system-config-hint">给每个家人 / 朋友生成独立的源地址 <code>/u/&lt;令牌&gt;/m3u</code>，可单独停用、泄露可追溯，且<strong>令牌进不了本后台</strong>。不新增用户则对现有链接零影响。</div>
+                        <div class="system-config-hint">给每个家人 / 朋友生成独立的源地址 <code>/u/&lt;令牌&gt;/interface.m3u</code>，可单独停用、泄露可追溯，且<strong>令牌进不了本后台</strong>。不新增用户则对现有链接零影响。</div>
                     </div>
                     <div style="margin-top:12px;">
                         <button type="button" class="btn btn-success" onclick="openUserModal()">＋ 新增用户</button>
@@ -6941,11 +6941,12 @@
             if (!box) return;
             const users = usersConfig.users || [];
             if (!users.length) {
-                box.innerHTML = '<div class="system-config-hint" style="margin:0;">还没有用户。点页面上方「＋ 新增用户」，新增后会得到一个独立的 /u/&lt;令牌&gt;/m3u 源地址，发给对应的人即可。</div>';
+                box.innerHTML = '<div class="system-config-hint" style="margin:0;">还没有用户。点页面上方「＋ 新增用户」，新增后会得到一个独立的 /u/&lt;令牌&gt;/interface.m3u 源地址，发给对应的人即可。</div>';
                 return;
             }
             box.innerHTML = users.map(u => {
-                const m3u = userLink(u.token, 'm3u');
+                // 带 .m3u 后缀，与顶部订阅栏一致：IINA、飞牛影视等按后缀认订阅，/m3u 会被当成普通文件打不开
+                const m3u = userLink(u.token, 'interface.m3u');
                 const pb = userLink(u.token, 'playback.xml');
                 const txt = userLink(u.token, 'txt');
                 const last = u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleString() : '从未';
