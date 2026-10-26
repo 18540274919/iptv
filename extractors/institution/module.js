@@ -50,8 +50,9 @@ export function createInstitutionModule(spec, runtime = {}) {
   const gateway = createMediaGateway({ moduleId: spec.id, fetchImpl, assertEnabled, resolveItem })
   module = {
     id: spec.id, name: spec.name, category: 'institution',
-    description: `${spec.description}节目按[直播]／[回放]标注。${spec.international ? '默认关闭，需要部署网络可访问官方境外媒体。' : ''}`,
-    ...(spec.international ? { defaultEnabled: false } : {}),
+    description: `${spec.description}节目按[直播]／[回放]标注，默认关闭。`,
+    // 点播录像为主、只有少数人看，且媒体全经本机转发：一律由用户自己打开。
+    defaultEnabled: false,
     capabilities: { cache: 'disk', resolve: true, epg: false, catchup: false },
     catalogVersion: 1, defaultRefreshMinutes: 60, minRefreshMinutes: 15, maxRefreshMinutes: 1440,
     configSchema: [],

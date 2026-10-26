@@ -998,12 +998,12 @@ try {
       assert.equal(modules.find(module => module.id === id)?.category, 'live', `${id} 应归入网络直播平台`)
     }
     // 默认关、由用户自己打开的：「海外」小节那几个，加上频道量大、只有本地少数人看的山东市县（#196 作者拍板）
-    // 和市县台的各省模块（guangdianyun-*，同样作者拍板）；高校与场馆中的三家境外机构也默认关。
+    // 和市县台的各省模块（guangdianyun-*，同样作者拍板）；高校与场馆 22 家全部默认关（v4.51.1 作者拍板）。
     assert.deepEqual(
       listModules().filter(module => module.defaultEnabled === false).map(module => module.id).sort(),
       [
         ...modules.filter(module => module.category === 'overseas').map(module => module.id),
-        'inst-christies', 'inst-phillips', 'inst-elb',
+        ...modules.filter(module => module.category === 'institution').map(module => module.id),
         'shandong-counties',
         ...modules.filter(module => module.id.startsWith('guangdianyun-')).map(module => module.id),
       ].sort(),
@@ -1066,14 +1066,16 @@ try {
       '用户明确保存的关闭态不能被默认值覆盖')
   })
 
-  check('★ 海外频道、境外机构、澳门、山东市县、市县台默认关闭，用户打开后保持打开；没点过的开关不落盘', () => {
+  check('★ 海外频道、高校与场馆、澳门、山东市县、市县台默认关闭，用户打开后保持打开；没点过的开关不落盘', () => {
     const optIn = listModules().filter(module => module.defaultEnabled === false).map(module => module.id)
     const gdy = optIn.filter(id => id.startsWith('guangdianyun-'))
     assert.ok(gdy.length >= 20, '市县台各省模块都默认关闭')
     assert.equal(listModules().filter(module => module.id.startsWith('guangdianyun-')).length, gdy.length)
-    assert.deepEqual(optIn.filter(id => !id.startsWith('guangdianyun-')).sort(),
-      ['inst-christies', 'inst-elb', 'inst-phillips', 'overseas', 'shandong-counties', 'tdm'],
-      '默认关的只有海外两个、境外机构三家、山东市县和市县台各省；新增要想清楚')
+    const inst = optIn.filter(id => id.startsWith('inst-'))
+    assert.equal(inst.length, 22, '高校与场馆 22 家都默认关闭')
+    assert.deepEqual(optIn.filter(id => !id.startsWith('guangdianyun-') && !id.startsWith('inst-')).sort(),
+      ['overseas', 'shandong-counties', 'tdm'],
+      '默认关的只有海外两个、山东市县、市县台各省和高校与场馆；新增要想清楚')
     const manager = newManager(undefined, { modules: {}, masterSwitchRetired: true })
     for (const id of optIn) assert.equal(manager.isModuleEnabled(getModule(id)), false, id)
     manager.setModuleEnabled('overseas', true)
