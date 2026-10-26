@@ -1401,6 +1401,9 @@ async function handleRequest(req, res) {
     res.setHeader('Content-Type', interfaceObj.contentType);
     // 禁止客户端按内容嗅探覆盖声明的类型，确保飞牛/浏览器严格按 text/plain 当文本处理（与 GitHub raw 一致）
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // 允许网页端跨域读取订阅（与 GitHub raw 一致，issue #201 飞牛影视 URL 导入）：
+    // 在浏览器里取订阅的客户端缺这个头会被拦下；访问控制靠地址里的密码段，不靠来源
+    res.setHeader('Access-Control-Allow-Origin', '*');
     if (routeUrlPath == "/m3u" || routeUrlPath == "/interface.m3u") {
       res.setHeader('content-disposition', "inline; filename=\"interface.m3u\"");
     }
