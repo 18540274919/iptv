@@ -1,6 +1,7 @@
 import http from "node:http"
 import { localRequestHandlerFor, resolverFor, shutdownModules } from './extractors/registry.js'
 import { pipeFlv } from './utils/flvProxy.js'
+import { sendLocalMediaResponse } from './utils/localMediaResponse.js'
 import { readFileSync, mkdirSync, existsSync, statSync } from "node:fs"
 import { createRequire } from "node:module"
 import fetch from 'node-fetch'
@@ -1290,14 +1291,7 @@ async function handleRequest(req, res) {
       client: clientOf(req),
     })
     if (local) {
-      res.writeHead(local.status || 200, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-        'Access-Control-Allow-Headers': '*',
-        ...(local.headers || {}),
-      })
-      if (method === 'HEAD') res.end()
-      else res.end(local.body)
+      await sendLocalMediaResponse(res, method, local)
       return
     }
   }

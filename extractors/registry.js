@@ -18,7 +18,8 @@
  *   description           string  后台一句话说明
  *   category              string  可选；后台源管理分组。'account' 表示带账号/
  *                                 授权能力，'live' 表示网络直播平台，'overseas' 表示
- *                                 面向大陆以外、默认关闭的海外模块；不声明即
+ *                                 面向大陆以外、默认关闭的海外模块；'institution' 表示
+ *                                 高校、文化场馆与活动来源，后台排在海外之后；不声明即
  *                                 'standard'（免账号的普通官方抓取模块）
  *   defaultEnabled        boolean 可选；用户没在卡片上点过开关时开不开，不声明即开。
  *                                 只有面向海外、在大陆连不上或常卡顿的模块写 false
@@ -110,7 +111,9 @@
  *   claimsLocalPath(path) → boolean + async handleLocalRequest(ctx) → response
  *       可选成对实现。供需要把进程内媒体 Buffer 作为 HLS 输出的模块使用；普通
  *       上游 HLS 不要走这里。ctx: { path, method, headers, accessPrefix, client }，response:
- *       { status, headers, body }。app.js 仍统一负责访问鉴权与 HTTP 写出。
+ *       { status, headers, body, dispose? }。body 支持 Buffer、字符串和 Web/Node
+ *       Readable；流式媒体由 app.js 维持背压，HEAD/断连/结束时调用 dispose。
+ *       app.js 仍统一负责访问鉴权与 HTTP 写出。
  *       client 是 { key, tag } 形式的客户端身份。这条路由不经 resolve，resolveBurstGuard
  *       管不到；要启动高成本本地会话（浏览器页等）的模块应自己在启动前调
  *       utils/clientScanGuard.js 的 checkModuleBurst，与 resolve 路径共用一本账。
@@ -225,11 +228,12 @@ import tdm from './tdm/index.js'
 import guangdianyunModules from './guangdianyun/index.js'
 import shandongCounties from './shandong-counties/index.js'
 import overseas from './overseas/index.js'
+import { institutionModules } from './institution/index.js'
 
 // 模块 id 会进 sourceId 并写进 EXTINF 属性值，不消毒就是注入面。
 // 与 utils/configBackupAPI.js 的文件名白名单同款约束。
 export const MODULE_ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/
-export const MODULE_CATEGORIES = new Set(['account', 'live', 'standard', 'overseas'])
+export const MODULE_CATEGORIES = new Set(['account', 'live', 'standard', 'overseas', 'institution'])
 
 const MODULES = [
   // 顺序即后台展示顺序，也是 channelMerger 的合并顺序（先到的分组优先保留）
@@ -305,6 +309,8 @@ const MODULES = [
   shandongCounties,
   // 市县台（广电云，按省拆成 20 个模块）跟在各省级、地市模块之后：并进同省分组时排在省台、市台后面
   ...guangdianyunModules,
+  // 独立机构分组；后台分类顺序由 extractorCategories 决定，显示在海外之后。
+  ...institutionModules,
   // 海外频道排最后：并进体育、文旅等现有分组时，跟在各台官方频道后面
   overseas,
 ]
