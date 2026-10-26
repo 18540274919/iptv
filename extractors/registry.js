@@ -199,7 +199,6 @@ import kankanews from './kankanews/index.js'
 import livechina from './livechina/index.js'
 import lotustv from './lotustv/index.js'
 import meizhouHakka from './meizhou-hakka/index.js'
-import jiangmen from './jiangmen/index.js'
 import mgtv from './mgtv/index.js'
 import migu from './migu/index.js'
 import ningbo from './ningbo/index.js'
@@ -288,7 +287,7 @@ const MODULES = [
   iqilu,
   sztv,
   meizhouHakka,
-  jiangmen,
+  // 江门官方直播 CDN 持续 502，2026-10-27 暂时取消注册；解析模块保留供恢复。
   njtv,
   nmtv,
   shanxi,

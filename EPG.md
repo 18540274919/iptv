@@ -28,6 +28,8 @@
 
 状态只用这几种：**已接入**（模块挂了 `epg`）、**咪咕自带**、**无官方节目单**（调研过，官方没有可用的）、**不适用**（直播间、景观机位这类本来就没有节目单）、**未调研**。
 
+江门综合因官方直播 CDN 持续返回 502，于 2026-10-27 暂时移除，当前不参与频道输出与节目单聚合；解析文件保留供恢复。
+
 2026-09-25 第二轮接入后本地一轮完整更新：模块节目单补上 146 个频道，全部频道中有节目单的 223 个（当时还含后来移除的大爱、GOOD TV 共 4 路；其后接入的陕西、天津、北京、甘肃卫视、延边卫视、宁夏、澳门莲花卫视、泉州未计入）。
 
 <!-- epg-status:start -->
@@ -103,7 +105,6 @@
 | `yangzhou` | 扬州 | 已接入 | 4/4 | 2 | vapp.96189.com/setsail/external/externalService?service=getProgramList | 扬州发布 App H5 频道页同款，params 是 JSON（channelId、起止 yyyyMMddHHmmss 北京时间）；按「与当天有重叠」返回，会带前一天跨零点的那档，按开始时间筛；开播前不到一分钟的国歌丢掉；明天排到傍晚、后天为空 |
 | `iqilu` | 山东 | 已接入 | 9/9 | 2 | sdxw.iqilu.com/v1/app/play/program/qilu | 闪电新闻后端，频道号 24–32（不是 _pdCid） |
 | `sztv` | 深圳 | 已接入 | 6/7 | 1 | hls-api.sztv.com.cn/api/getEpgs | 深圳少儿官方为空 |
-| `jiangmen` | 江门 | 已接入 | 1/1 | 2 | db.jmtv.cn/epg/4x3T0dO.json | 官网 liveList.jsonpCallback JSONP 数据，严格解析不执行；保留具体剧名与集数、官方起止时间，按 ref 对应，排除占位，不提供历史回看 |
 | `meizhou-hakka` | 梅州 | 无官方节目单 | — | — | — | hellohakka.cn 网页端（kan0512 融媒 App 壳）没有节目单页；接口 mzxjapi.hellohakka.cn/api/app/channel/static/list 在网页代码里只有地址、没有调用，裸请求回「必传参数不正确」，参数只在原生 App 里，不再往下拆；央视网试过 meizhou / meizhou1 都是 params error，央视频、咪咕也没收 |
 | `njtv` | 南京 | 已接入 | 4 路电视 | 2 | apigateway.nbs.cn/Liveprogram/getEPGByTaskId | 直链频道，按名对上；13 路机位不适用 |
 | `nmtv` | 内蒙古 | 无官方节目单 | — | — | — | broadcast/programs 只维护广播，电视频道停在 2023 年；央视网有蒙语台（代号 neimenggu2）但连日为空，内蒙古卫视由咪咕 / 央视频覆盖 |
