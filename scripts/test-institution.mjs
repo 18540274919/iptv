@@ -146,6 +146,43 @@ test('HLS主清单、独立音轨、密钥、初始化段与相对分片均保�
   assert.equal((await gateway.handle(context('/institution/inst-fixture/not-registered.ts'))).status, 410)
 })
 
+test('清单不向上游转发 Range，改写后按播放器 Range 切片，探测能读到尾部 ENDLIST', async () => {
+  // Ceau 先取 bytes=0-65535，206 带总长时再取 bytes=-65536 找 ENDLIST；上游若截断就永远判成直播。
+  const segments = Array.from({ length: 3000 }, (_, i) => `#EXTINF:2,\nhttps://cdn.example.com/vod/${'x'.repeat(40)}-${i}.ts?sign=${'s'.repeat(40)}`).join('\n')
+  const full = `#EXTM3U\n#EXT-X-TARGETDURATION:2\n${segments}\n#EXT-X-ENDLIST\n`
+  const requests = []
+  const fetchImpl = async (url, init) => {
+    requests.push({ url: String(url), range: init.headers.Range })
+    const body = init.headers.Range ? full.slice(0, 65536) : full
+    return new Response(body, { status: init.headers.Range ? 206 : 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } })
+  }
+  const item = sample('long-vod', { url: 'https://media.example.com/vod/index.m3u8' })
+  const gateway = createMediaGateway({ moduleId: 'inst-fixture', assertEnabled() {}, resolveItem: async () => item, fetchImpl })
+  const whole = await gateway.handle(context('/root'), item)
+  assert.equal(whole.status, 200)
+  assert.match(whole.body, /#EXT-X-ENDLIST\n$/)
+  const total = Buffer.byteLength(whole.body)
+  assert.ok(total > 65536, '夹具要比探测的首段长，才能复现截断')
+  const head = await gateway.handle(context('/root', { headers: { range: 'bytes=0-65535' } }), item)
+  assert.equal(head.status, 206)
+  assert.equal(head.headers['Content-Range'], `bytes 0-65535/${total}`)
+  assert.equal(head.body.length, 65536)
+  const tail = await gateway.handle(context('/root', { headers: { range: 'bytes=-65536' } }), item)
+  assert.equal(tail.status, 206)
+  assert.match(tail.body.toString('utf8'), /#EXT-X-ENDLIST\n$/)
+  const beyond = await gateway.handle(context('/root', { headers: { range: `bytes=${total}-` } }), item)
+  assert.equal(beyond.status, 416)
+  assert.equal(beyond.headers['Content-Range'], `bytes */${total}`)
+  assert.ok(requests.every(r => r.range === undefined), '清单请求不能带 Range 去上游')
+  // 地址不像清单、上游却回了清单：先带 Range 取到后，丢掉重取整份
+  requests.length = 0
+  const disguised = sample('disguised', { url: 'https://media.example.com/vod/play?id=7' })
+  const redo = await gateway.handle(context('/root', { headers: { range: 'bytes=0-65535' } }), disguised)
+  assert.deepEqual(requests.map(r => r.range), ['bytes=0-65535', undefined])
+  assert.match(Buffer.from(redo.body).toString('utf8'), /^#EXTM3U/)
+  assert.equal(redo.headers['Content-Range'], `bytes 0-65535/${total}`)
+})
+
 test('MP4 Range 与 206/416 元数据直通，并保留流式响应及上游终止函数', async () => {
   let signal, requestHeaders
   const stream = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('range')); controller.close() } })

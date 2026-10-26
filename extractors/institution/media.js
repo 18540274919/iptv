@@ -1,6 +1,16 @@
 import { randomBytes, createHmac } from 'node:crypto'
 import { safeMediaUrl, rewriteManifest } from './net.js'
 
+// One byte range over a body generated here: null serves it whole, false is unsatisfiable.
+function byteRange(header, total) {
+  const m = String(header || '').match(/^bytes=(\d*)-(\d*)$/)
+  if (!m || (!m[1] && !m[2])) return null
+  let start, end = total - 1
+  if (!m[1]) start = Math.max(0, total - Number(m[2]))
+  else { start = Number(m[1]); if (m[2]) end = Math.min(end, Number(m[2])) }
+  return start <= end && start < total ? { start, end } : false
+}
+
 // Per-institution capabilities; no user-supplied upstream URL is accepted.
 export function createMediaGateway({ moduleId, fetchImpl, assertEnabled, resolveItem }) {
   const secret = randomBytes(32), resources = new Map()
@@ -33,11 +43,18 @@ export function createMediaGateway({ moduleId, fetchImpl, assertEnabled, resolve
       const dispose = () => { clearTimeout(timer); abort.abort() }
       try {
         assertEnabled()
-        const headers = { ...item.headers, 'Accept-Encoding': 'identity' }
-        if (ctx.headers?.range) headers.Range = ctx.headers.range
-        const upstream = await fetchImpl(safeMediaUrl(item.url), {
-          method: ctx.method === 'HEAD' ? 'HEAD' : 'GET', headers, signal: abort.signal,
+        const request = range => fetchImpl(safeMediaUrl(item.url), {
+          method: ctx.method === 'HEAD' ? 'HEAD' : 'GET', signal: abort.signal,
+          headers: { ...item.headers, 'Accept-Encoding': 'identity', ...(range ? { Range: range } : {}) },
         })
+        // Manifests are rewritten whole; a player's Range applies to the rewritten text, never
+        // upstream, or a probe reading the first 64 KiB gets a cut list without ENDLIST.
+        const manifestUrl = /\.m3u8(?:\?|$)/i.test(item.url)
+        let upstream = await request(manifestUrl ? '' : ctx.headers?.range)
+        if (!manifestUrl && ctx.headers?.range && /mpegurl/i.test(upstream.headers.get('content-type') || '')) {
+          await upstream.body?.cancel()
+          upstream = await request('')
+        }
         clearTimeout(timer)
         safeMediaUrl(upstream.url || item.url)
         assertEnabled()
@@ -56,7 +73,11 @@ export function createMediaGateway({ moduleId, fetchImpl, assertEnabled, resolve
           if (item.kind === 'live' && /#EXT-X-ENDLIST/.test(text)) throw new Error('直播已结束')
           const body = rewriteManifest(text, upstream.url || item.url, url => register(item, url, ctx.accessPrefix || ''))
           dispose()
-          return { status: 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl; charset=utf-8', 'Cache-Control': 'no-store' }, body }
+          const headers = { 'Content-Type': 'application/vnd.apple.mpegurl; charset=utf-8', 'Cache-Control': 'no-store', 'Accept-Ranges': 'bytes' }
+          const bytes = Buffer.from(body), range = byteRange(ctx.headers?.range, bytes.length)
+          if (range === false) return { status: 416, headers: { ...headers, 'Content-Range': `bytes */${bytes.length}` }, body: '' }
+          if (range) return { status: 206, headers: { ...headers, 'Content-Range': `bytes ${range.start}-${range.end}/${bytes.length}` }, body: bytes.subarray(range.start, range.end + 1) }
+          return { status: 200, headers, body }
         }
         const responseHeaders = { 'Cache-Control': 'no-store' }
         for (const header of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
