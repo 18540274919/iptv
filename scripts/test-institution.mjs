@@ -96,7 +96,7 @@ test('复合提供者在网络请求前拒绝跨机构ID，关闭同提供者内
     ['knowledge', `shlib-${'A'.repeat(32)}`, '中国数字科技馆'],
     ['ceremonies', 'stvf-101241203145824633644838301995013779', '上海国际电影节 · 金爵奖'],
     ['conferences', 'zgc-2026032410020870', '上海论坛组委会'],
-    ['auctions', 'phillips-between-canvas-and-form', '佳士得 Christie’s'],
+    ['auctions', `christies-${'a'.repeat(32)}`, '富艺斯 Phillips'],
   ]) {
     const adapter = await import(`../extractors/institution/providers/${provider}.mjs`)
     await assert.rejects(adapter.resolve(id, { institution, fetchImpl }), /不属于/)

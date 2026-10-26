@@ -1,8 +1,7 @@
 import { settleRequests } from './settled.mjs';
 /** Anonymous official auction-house editorial video extraction; viewing only. */
-export const provider = Object.freeze({ id: 'auctions', name: '拍卖与艺术预展', officialUrl: 'https://www.christies.com/en/stories/archive' });
+export const provider = Object.freeze({ id: 'auctions', name: '拍卖与艺术预展', officialUrl: 'https://www.phillips.com/' });
 const RELIGIOUS = /佛教|佛像|佛造像|藏传|梵像|宗教|基督|天主|清真|buddh|religio|devotional|sacred|holy\s|islamic/i;
-const CHRISTIES_ACCOUNT = '6057940598001';
 const PHILLIPS_ACCOUNT = '6415663453001';
 const policies = new Map();
 function clean(value = '') {
@@ -13,14 +12,9 @@ async function request(url, options = {}, { fetchImpl = fetch } = {}) {
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${new URL(url).hostname}`);
   return response;
 }
-async function christiesApi(path, params = {}, options) {
-  const url = new URL(`https://apim.christies.com/${path}`);
-  url.search = new URLSearchParams({ language: 'en', ...params }).toString();
-  return (await request(url.href, { headers: { Accept: 'application/vnd.christies.v3+json', Referer: 'https://www.christies.com/' } }, options)).json();
-}
 function playerReference(value, expectedAccount) {
   try {
-    const url = new URL(clean(value), 'https://www.christies.com/');
+    const url = new URL(clean(value), 'https://www.phillips.com/');
     const match = url.pathname.match(/^\/(\d+)\/([\w-]+)_([\w-]+)\/index\.html$/);
     const videoId = url.searchParams.get('videoId');
     if (url.hostname !== 'players.brightcove.net' || match?.[1] !== expectedAccount || !/^\d+$/.test(videoId || '')) return null;
@@ -54,22 +48,6 @@ async function publicVideo(reference, options) {
   if (!source || Number(video.duration) <= 0 || video.custom_fields?.live === 'true') throw new Error('当前视频没有公开无DRM的回看媒体');
   return { video, source };
 }
-async function resolveChristies(uuid, options) {
-  if (!/^[a-f0-9]{32}$/i.test(uuid)) throw new Error('无效的佳士得视频ID');
-  const detail = await christiesApi(`stories/${uuid}`, {}, options);
-  if (RELIGIOUS.test(`${detail.title} ${detail.descriptionNoHTML || ''}`)) throw new Error('宗教专题不收录');
-  const ref = (detail.media || []).filter(media => media.type === 'Video').map(media => playerReference(media.primary?.href, CHRISTIES_ACCOUNT)).find(Boolean);
-  if (!ref) throw new Error('该佳士得文章未提供官方公开播放器');
-  const { video, source } = await publicVideo(ref, options);
-  return {
-    id: `christies-${uuid}`, provider: provider.id, institution: "佳士得 Christie’s", category: '拍卖', kind: 'vod',
-    title: clean(detail.title), pageUrl: new URL(detail.storyDetailPath, 'https://www.christies.com').href,
-    description: `佳士得官方拍卖相关预展或艺术介绍短片。${clean(detail.descriptionNoHTML || detail.description || video.description || '')}`,
-    url: source.src, headers: { Referer: 'https://www.christies.com/' },
-    duration: Number(video.duration) / 1000, format: source.container === 'MP4' ? 'mp4' : 'hls',
-    videoId: ref.videoId,
-  };
-}
 async function resolvePhillips(slug, options) {
   if (!/^[a-z0-9][a-z0-9-]{0,160}$/.test(slug)) throw new Error('无效的富艺斯视频详情');
   const pageUrl = `https://www.phillips.com/video/${slug}`;
@@ -90,16 +68,10 @@ async function resolvePhillips(slug, options) {
   };
 }
 export async function resolve(itemId, options = {}) {
-  const owner = itemId.startsWith('christies-') ? '佳士得 Christie’s' : itemId.startsWith('phillips-') ? '富艺斯 Phillips' : '';
+  const owner = itemId.startsWith('phillips-') ? '富艺斯 Phillips' : '';
   if (options.institution && owner !== options.institution) throw new Error('节目不属于该拍卖机构');
-  if (itemId.startsWith('christies-')) return resolveChristies(itemId.slice(10), options);
   if (itemId.startsWith('phillips-')) return resolvePhillips(itemId.slice(9), options);
   throw new Error('无效的拍卖机构条目');
-}
-async function discoverChristies(options) {
-  const list = await christiesApi('stories', { count: '20', includeHidden: 'false' }, options);
-  const rows = (list.results || []).filter(row => !row.flags?.hideInArchive && !RELIGIOUS.test(`${row.title} ${row.descriptionNoHTML || ''}`) && row.media?.some(media => media.type === 'Video' && playerReference(media.primary?.href, CHRISTIES_ACCOUNT))).slice(0, options.vodLimit ?? 3);
-  return settleRequests(rows.map(row => resolveChristies(row.id, options)));
 }
 async function discoverPhillips(options) {
   const html = await (await request('https://www.phillips.com/', {}, options)).text();
@@ -108,7 +80,6 @@ async function discoverPhillips(options) {
 }
 export async function discover(options = {}) {
   const jobs = [
-    { name: '佳士得 Christie’s', run: () => discoverChristies(options) },
     { name: '富艺斯 Phillips', run: () => discoverPhillips(options) },
   ].filter(job => !options.institution || job.name === options.institution);
   if (!jobs.length) throw new Error('未知拍卖机构');

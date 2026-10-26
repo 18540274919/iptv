@@ -998,7 +998,7 @@ try {
       assert.equal(modules.find(module => module.id === id)?.category, 'live', `${id} 应归入网络直播平台`)
     }
     // 默认关、由用户自己打开的：「海外」小节那几个，加上频道量大、只有本地少数人看的山东市县（#196 作者拍板）
-    // 和市县台的各省模块（guangdianyun-*，同样作者拍板）；高校与场馆 22 家全部默认关（v4.51.1 作者拍板）。
+    // 和市县台的各省模块（guangdianyun-*，同样作者拍板）；高校与场馆全部默认关（v4.51.1 作者拍板）。
     assert.deepEqual(
       listModules().filter(module => module.defaultEnabled === false).map(module => module.id).sort(),
       [
@@ -1013,12 +1013,12 @@ try {
       'inst-xjtu', 'inst-jlu', 'inst-chnmuseum', 'inst-shqyg', 'inst-zjwhg', 'inst-culturecloud',
       'inst-fudan', 'inst-bnu', 'inst-hust', 'inst-gdwhg', 'inst-hnwhg', 'inst-gzdjy', 'inst-ccom',
       'inst-shlib', 'inst-cdstm', 'inst-stvf', 'inst-siff', 'inst-zgc', 'inst-shforum',
-      'inst-christies', 'inst-phillips', 'inst-elb',
+      'inst-phillips', 'inst-elb',
     ]
     assert.deepEqual(modules.filter(module => module.category === 'institution').map(module => module.id).sort(), institutionIds.sort(),
-      '22 家机构各自注册为独立模块，统一归入高校与场馆')
+      '21 家机构各自注册为独立模块，统一归入高校与场馆')
     for (const id of institutionIds) assert.equal(modules.find(module => module.id === id)?.category, 'institution', id)
-    assert.equal(new Set(modules.filter(module => module.category === 'institution').map(module => module.name)).size, 22,
+    assert.equal(new Set(modules.filter(module => module.category === 'institution').map(module => module.name)).size, 21,
       '机构显示名应独立，不合并成跨机构模块')
   })
 
@@ -1072,7 +1072,7 @@ try {
     assert.ok(gdy.length >= 20, '市县台各省模块都默认关闭')
     assert.equal(listModules().filter(module => module.id.startsWith('guangdianyun-')).length, gdy.length)
     const inst = optIn.filter(id => id.startsWith('inst-'))
-    assert.equal(inst.length, 22, '高校与场馆 22 家都默认关闭')
+    assert.equal(inst.length, 21, '高校与场馆 21 家都默认关闭')
     assert.deepEqual(optIn.filter(id => !id.startsWith('guangdianyun-') && !id.startsWith('inst-')).sort(),
       ['overseas', 'shandong-counties', 'tdm'],
       '默认关的只有海外两个、山东市县、市县台各省和高校与场馆；新增要想清楚')

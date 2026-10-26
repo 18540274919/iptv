@@ -37,7 +37,6 @@ export const SOURCES = Object.freeze([
   source('inst-siff', '上海国际电影节', '上海国际电影节 · 金爵奖', ceremonies, 'https://www.siff.com/list?cid=import-319', '上海国际电影节官网金爵奖颁奖典礼全程回顾，当前选取三场完整回放。'),
   source('inst-zgc', '中关村论坛', '中关村论坛', conferences, 'https://www.zgcforum.com.cn/zh2026/live', '中关村论坛官网已经开启公开回看的会场录像；排除口令、额外验证和观众注册要求。'),
   source('inst-shforum', '上海论坛组委会', '上海论坛组委会', conferences, 'https://shanghaiforum.fudan.edu.cn/19462/list.htm', '上海论坛组委会官网嘉宾单场演讲回放；当前三条为 480p HEVC，需要播放器支持。'),
-  source('inst-christies', '佳士得', '佳士得 Christie’s', auctions, 'https://www.christies.com/en/stories/archive', '佳士得官方预展、藏品介绍和拍卖回顾短片；当前不提供整场拍卖，不操作竞买或交易。部署网络须可访问官方境外媒体。', true),
   source('inst-phillips', '富艺斯', '富艺斯 Phillips', auctions, 'https://www.phillips.com/', '富艺斯官方拍卖预展及拍后回顾短片；当前不提供整场拍卖，不操作竞买或交易。部署网络须可访问官方境外媒体。', true),
   source('inst-elb', '易北爱乐音乐厅', '易北爱乐音乐厅 · Elbphilharmonie', stages, stages.provider.officialUrl, '音乐厅官网指定的 NDR／ARD 公开长篇音乐会，遵守原有地区、登录和 DRM 限制；部署网络须可访问官方境外媒体。', true),
 ]);

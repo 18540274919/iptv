@@ -138,6 +138,27 @@ test('拍卖机构播放器仅选已核实 CDN 的无 DRM 副本，不因高画�
   assert.equal(auctions.chooseClearSource({ sources: [unknown, drm] }), undefined);
 });
 
+test('佳士得移除后不再发现或解析旧条目，富艺斯仍独立发现和取址', async () => {
+  const calls = [];
+  const fetchImpl = async url => {
+    const target = new URL(url); calls.push(target.href);
+    if (target.hostname === 'www.phillips.com' && target.pathname === '/') return new Response('<a href="/video/between-canvas-and-form">Video</a>');
+    if (target.hostname === 'www.phillips.com') return new Response('<title>Between Canvas and Form</title><iframe src="//players.brightcove.net/6415663453001/default_default/index.html?videoId=123"></iframe>');
+    if (target.hostname === 'players.brightcove.net') return new Response('policyKey:"public-fixture-key"');
+    if (target.hostname === 'edge.api.brightcove.com') return Response.json({ duration: 60000, sources: [{ src: 'https://example.brightcovecdn.com/official/master.m3u8', type: 'application/x-mpegURL' }] });
+    throw new Error(`Unexpected upstream ${target.hostname}`);
+  };
+  await assert.rejects(auctions.discover({ institution: '佳士得 Christie’s', fetchImpl }), /未知拍卖机构/);
+  await assert.rejects(auctions.resolve(`christies-${'a'.repeat(32)}`, { fetchImpl }), /无效的拍卖机构条目/);
+  assert.equal(calls.length, 0);
+  const result = await auctions.discover({ fetchImpl });
+  assert.deepEqual(result.items.map(i => [i.institution, i.id]), [['富艺斯 Phillips', 'phillips-between-canvas-and-form']]);
+  const replay = await auctions.resolve(result.items[0].id, { institution: '富艺斯 Phillips', fetchImpl });
+  assert.equal(replay.kind, 'vod');
+  assert.equal(replay.url, 'https://example.brightcovecdn.com/official/master.m3u8');
+  assert.ok(calls.every(url => !url.includes('christies')));
+});
+
 for (const [adapter, institution, allowedHost] of [
   [campus, '吉林大学电视台', 'tv.jlu.edu.cn'],
   [universities, '复旦大学', 'news.fudan.edu.cn'],
