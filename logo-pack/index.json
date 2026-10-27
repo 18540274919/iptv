@@ -706,6 +706,15 @@
    "updated": "2026-09-25",
    "width": 256
   },
+  "格尔木新闻综合": {
+   "file": "格尔木新闻综合.png",
+   "hash": "2bd9eac74a",
+   "height": 256,
+   "origin": "qinghai",
+   "source": "https://grmapposs.geermurmt.cn/tianma/2025/03/10/F8A59614F311CC949AC87C94E38479DC.png",
+   "updated": "2026-10-27",
+   "width": 256
+  },
   "公视高清": {
    "file": "公视高清.png",
    "hash": "07beafe78f",
@@ -1022,6 +1031,15 @@
    "source": "https://slststore.xjtvs.com.cn/imgs/2024/09/06/xj_img_20240906105720257*$*1.000",
    "updated": "2026-09-25",
    "width": 216
+  },
+  "海东综合频道": {
+   "file": "海东综合频道.png",
+   "hash": "af9d88c322",
+   "height": 256,
+   "origin": "qinghai",
+   "source": "https://oss.hdhhy.cn/tianma/2026/04/13/DF88CA87DD141DE0AB94417FFDE17615.png",
+   "updated": "2026-10-27",
+   "width": 256
   },
   "海南少儿": {
    "file": "海南少儿.png",
@@ -5422,6 +5440,8 @@
   "qingdao/qingdao-3": "青岛影视",
   "qingdao/qingdao-4": "青岛都市",
   "qingdao/qingdao-5": "青岛教育",
+  "qinghai/#格尔木新闻综合": "格尔木新闻综合",
+  "qinghai/#海东综合频道": "海东综合频道",
   "qinghai/qinghai-amdo": "安多卫视",
   "qinghai/qinghai-qhds": "青海都市",
   "qinghai/qinghai-qhsh": "青海经济生活",
